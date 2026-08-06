@@ -1,0 +1,367 @@
+name: e-commerce-marketplace
+services:
+  seed-postgres-demo:
+    image: postgres:17-alpine
+    environment:
+      PGPASSWORD: catalog_password
+    entrypoint:
+    - sh
+    - -c
+    - 'set -e
+
+      PGPASSWORD=catalog_password psql -h postgres -U catalog -d catalog_db -f /seed/catalog.sql
+
+      PGPASSWORD=pricing_password psql -h postgres -U pricing_app -d pricing_db -f /seed/pricing.sql
+
+      PGPASSWORD=promotion_password psql -h postgres -U promotion_app -d promotion_db -f /seed/promotion.sql
+
+      PGPASSWORD=inventory_password psql -h postgres -U inventory_app -d inventory_db -f /seed/inventory.sql
+
+      PGPASSWORD=media_password psql -h postgres -U media_user -d media_db -f /seed/media.sql
+
+      PGPASSWORD=operations_password psql -h postgres -U operations_user -d operations_db -f /seed/operations.sql
+
+      PGPASSWORD=audit_password psql -h postgres -U audit_app -d audit_db -f /seed/audit.sql
+
+      PGPASSWORD=authorization_password psql -h postgres -U authorization_app -d authorization_db -f /seed/authorization.sql
+
+      PGPASSWORD=payment_password psql -h postgres -U payment_app -d payment_db -f /seed/payment.sql
+
+      PGPASSWORD=checkout_password psql -h postgres -U checkout_app -d checkout_db -f /seed/checkout.sql
+
+      PGPASSWORD=return_password psql -h postgres -U return_user -d return_db -f /seed/return.sql
+
+      '
+    volumes:
+    - ./data/seed-demo/postgresql:/seed:ro
+    depends_on:
+      be-catalog-api:
+        condition: service_healthy
+      be-pricing-api:
+        condition: service_healthy
+      be-promotion-api:
+        condition: service_healthy
+      be-inventory-api:
+        condition: service_healthy
+      be-media-api:
+        condition: service_healthy
+      be-operations-api:
+        condition: service_healthy
+      be-audit-api:
+        condition: service_healthy
+      be-authorization-api:
+        condition: service_healthy
+      be-payment-api:
+        condition: service_healthy
+      be-checkout-api:
+        condition: service_healthy
+      be-return-api:
+        condition: service_healthy
+    restart: 'no'
+    networks:
+    - marketplace
+  seed-mysql-demo:
+    image: mysql:8.4
+    environment:
+      MYSQL_PWD: root_password
+    entrypoint:
+    - sh
+    - -c
+    - 'set -e
+
+      mysql -h mysql -uroot -proot_password seller_db < /seed/seller.sql
+
+      mysql -h mysql -uroot -proot_password review_db < /seed/review.sql
+
+      mysql -h mysql -uroot -proot_password cart_db < /seed/cart.sql
+
+      '
+    volumes:
+    - ./data/seed-demo/mysql:/seed:ro
+    depends_on:
+      be-seller-api:
+        condition: service_healthy
+      be-review-api:
+        condition: service_healthy
+      be-cart-api:
+        condition: service_healthy
+    restart: 'no'
+    networks:
+    - marketplace
+  seed-sqlserver-demo:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      MSSQL_SA_PASSWORD: Marketplace!2026
+    entrypoint:
+    - /bin/bash
+    - -lc
+    - 'set -e
+
+      /opt/mssql-tools18/bin/sqlcmd -S sqlserver -U sa -P "$$MSSQL_SA_PASSWORD" -C -d order_db -i /seed/order.sql
+
+      /opt/mssql-tools18/bin/sqlcmd -S sqlserver -U sa -P "$$MSSQL_SA_PASSWORD" -C -d fulfillment_db -i /seed/fulfillment.sql
+
+      '
+    volumes:
+    - ./data/seed-demo/sqlserver:/seed:ro
+    depends_on:
+      be-order-api:
+        condition: service_healthy
+      be-fulfillment-api:
+        condition: service_healthy
+    restart: 'no'
+    networks:
+    - marketplace
+  seed-oracle-demo:
+    image: gvenzl/oracle-free:23-slim-faststart
+    entrypoint:
+    - /bin/bash
+    - -lc
+    - echo exit | sqlplus -s marketplace/marketplace_password@oracle:1521/FREEPDB1 @/seed/settlement.sql
+    volumes:
+    - ./data/seed-demo/oracle:/seed:ro
+    depends_on:
+      be-settlement-api:
+        condition: service_healthy
+    restart: 'no'
+    networks:
+    - marketplace
+    profiles:
+    - heavy
+    - full
+  seed-mongo-demo:
+    image: mongo:8.0
+    entrypoint:
+    - bash
+    - -lc
+    - 'set -e
+
+      mongosh ''mongodb://mongo:27017/comment_db?replicaSet=rs0'' /seed/comment.js
+
+      mongosh ''mongodb://mongo:27017/notification_db?replicaSet=rs0'' /seed/notification.js
+
+      '
+    volumes:
+    - ./data/seed-demo/mongodb:/seed:ro
+    depends_on:
+      be-comment-api:
+        condition: service_healthy
+      mongo-init:
+        condition: service_completed_successfully
+      be-notification-api:
+        condition: service_healthy
+    restart: 'no'
+    networks:
+    - marketplace
+    profiles:
+    - full
+  media-seed:
+    build:
+      context: ./infrastructure/media-seed
+      dockerfile: Dockerfile
+    image: e-commerce-media-seed:local
+    environment:
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ROOT_USER: marketplace
+      MINIO_ROOT_PASSWORD: marketplace-secret
+      MINIO_BUCKET: marketplace-media
+    depends_on:
+      minio:
+        condition: service_healthy
+      seed-postgres-demo:
+        condition: service_completed_successfully
+    restart: 'no'
+    networks:
+    - marketplace
+    pull_policy: build
+  seed-opensearch-demo:
+    image: curlimages/curl:8.12.1
+    entrypoint:
+    - sh
+    - /seed/seed-demo.sh
+    environment:
+      OPENSEARCH_URL: http://opensearch:9200
+      OPENSEARCH_PRODUCT_INDEX: marketplace-products-v1
+    volumes:
+    - ./infrastructure/opensearch:/seed:ro
+    depends_on:
+      opensearch-init:
+        condition: service_completed_successfully
+      seed-postgres-demo:
+        condition: service_completed_successfully
+      media-seed:
+        condition: service_completed_successfully
+    restart: 'no'
+    networks:
+    - marketplace
+  seed-postgres-large:
+    image: postgres:17-alpine
+    profiles:
+    - seed-large
+    entrypoint:
+    - sh
+    - -c
+    - 'set -e
+
+      PGPASSWORD=catalog_password psql -h postgres -U catalog -d catalog_db -f /seed/catalog-large.sql
+
+      PGPASSWORD=pricing_password psql -h postgres -U pricing_app -d pricing_db -f /seed/pricing-large.sql
+
+      PGPASSWORD=promotion_password psql -h postgres -U promotion_app -d promotion_db -f /seed/promotion-large.sql
+
+      PGPASSWORD=inventory_password psql -h postgres -U inventory_app -d inventory_db -f /seed/inventory-large.sql
+
+      PGPASSWORD=media_password psql -h postgres -U media_user -d media_db -f /seed/media-large.sql
+
+      PGPASSWORD=operations_password psql -h postgres -U operations_user -d operations_db -f /seed/operations-large.sql
+
+      PGPASSWORD=audit_password psql -h postgres -U audit_app -d audit_db -f /seed/audit-large.sql
+
+      PGPASSWORD=authorization_password psql -h postgres -U authorization_app -d authorization_db -f /seed/authorization-large.sql
+
+      PGPASSWORD=payment_password psql -h postgres -U payment_app -d payment_db -f /seed/payment-large.sql
+
+      PGPASSWORD=checkout_password psql -h postgres -U checkout_app -d checkout_db -f /seed/checkout-large.sql
+
+      PGPASSWORD=return_password psql -h postgres -U return_user -d return_db -f /seed/return-large.sql
+
+      '
+    volumes:
+    - ./data/seed-large/postgresql:/seed:ro
+    depends_on:
+      be-catalog-api:
+        condition: service_healthy
+      be-inventory-api:
+        condition: service_healthy
+      be-pricing-api:
+        condition: service_healthy
+      be-audit-api:
+        condition: service_healthy
+      be-payment-api:
+        condition: service_healthy
+      be-checkout-api:
+        condition: service_healthy
+      be-return-api:
+        condition: service_healthy
+      be-operations-api:
+        condition: service_healthy
+      be-media-api:
+        condition: service_healthy
+    restart: 'no'
+    networks:
+    - marketplace
+  seed-mysql-large:
+    image: mysql:8.4
+    profiles:
+    - seed-large
+    environment:
+      MYSQL_PWD: root_password
+    entrypoint:
+    - sh
+    - -c
+    - 'set -e
+
+      mysql -h mysql -uroot -proot_password seller_db < /seed/seller-large.sql
+
+      mysql -h mysql -uroot -proot_password review_db < /seed/review-large.sql
+
+      mysql -h mysql -uroot -proot_password cart_db < /seed/cart-large.sql
+
+      '
+    volumes:
+    - ./data/seed-large/mysql:/seed:ro
+    depends_on:
+      be-seller-api:
+        condition: service_healthy
+      be-review-api:
+        condition: service_healthy
+    restart: 'no'
+    networks:
+    - marketplace
+  seed-sqlserver-large:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    profiles:
+    - seed-large
+    environment:
+      MSSQL_SA_PASSWORD: Marketplace!2026
+    entrypoint:
+    - /bin/bash
+    - -lc
+    - 'set -e
+
+      /opt/mssql-tools18/bin/sqlcmd -S sqlserver -U sa -P "$$MSSQL_SA_PASSWORD" -C -d order_db -i /seed/order-large.sql
+
+      /opt/mssql-tools18/bin/sqlcmd -S sqlserver -U sa -P "$$MSSQL_SA_PASSWORD" -C -d fulfillment_db -i /seed/fulfillment-large.sql
+
+      '
+    volumes:
+    - ./data/seed-large/sqlserver:/seed:ro
+    depends_on:
+      be-order-api:
+        condition: service_healthy
+    restart: 'no'
+    networks:
+    - marketplace
+  seed-oracle-large:
+    image: gvenzl/oracle-free:23-slim-faststart
+    profiles:
+    - seed-large
+    entrypoint:
+    - /bin/bash
+    - -lc
+    - echo exit | sqlplus -s marketplace/marketplace_password@oracle:1521/FREEPDB1 @/seed/settlement-large.sql
+    volumes:
+    - ./data/seed-large/oracle:/seed:ro
+    depends_on:
+      be-settlement-api:
+        condition: service_healthy
+    restart: 'no'
+    networks:
+    - marketplace
+  seed-mongo-large:
+    image: mongo:8.0
+    profiles:
+    - seed-large
+    entrypoint:
+    - bash
+    - -lc
+    - 'set -e
+
+      mongosh ''mongodb://mongo:27017/comment_db?replicaSet=rs0'' /seed/comment-large.js
+
+      mongosh ''mongodb://mongo:27017/notification_db?replicaSet=rs0'' /seed/notification-large.js
+
+      '
+    volumes:
+    - ./data/seed-large/mongodb:/seed:ro
+    depends_on:
+      mongo-init:
+        condition: service_completed_successfully
+      be-comment-api:
+        condition: service_healthy
+      be-notification-api:
+        condition: service_healthy
+    restart: 'no'
+    networks:
+    - marketplace
+  seed-opensearch-large:
+    image: curlimages/curl:8.12.1
+    profiles:
+    - seed-large
+    entrypoint:
+    - sh
+    - /seed/seed-large.sh
+    environment:
+      OPENSEARCH_URL: http://opensearch:9200
+      OPENSEARCH_PRODUCT_INDEX: marketplace-products-v1
+    volumes:
+    - ./infrastructure/opensearch:/seed:ro
+    depends_on:
+      opensearch-init:
+        condition: service_completed_successfully
+    restart: 'no'
+    networks:
+    - marketplace
+networks:
+  marketplace:
+    name: marketplace-network

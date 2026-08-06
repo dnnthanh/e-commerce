@@ -1,0 +1,2 @@
+-- Schema only. Performance indexes and partitions intentionally live in database-labs.
+CREATE TABLE audit_event (id BIGSERIAL PRIMARY KEY, event_id VARCHAR(36) NOT NULL UNIQUE, actor_id VARCHAR(128) NOT NULL, actor_type VARCHAR(32) NOT NULL, action VARCHAR(128) NOT NULL, resource_type VARCHAR(128) NOT NULL, resource_id VARCHAR(128) NULL, source_service VARCHAR(128) NOT NULL, trace_id VARCHAR(64) NULL, before_json JSONB NULL, after_json JSONB NULL, reason TEXT NULL, occurred_at TIMESTAMP NOT NULL);

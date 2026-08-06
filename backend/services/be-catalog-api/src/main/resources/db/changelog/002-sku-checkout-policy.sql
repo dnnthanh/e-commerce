@@ -1,0 +1,1 @@
+ALTER TABLE sku ADD COLUMN purchase_limit INT NOT NULL DEFAULT 99;

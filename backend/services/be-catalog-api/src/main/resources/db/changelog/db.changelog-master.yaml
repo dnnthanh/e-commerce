@@ -1,0 +1,22 @@
+databaseChangeLog:
+  - changeSet:
+      id: 001-schema
+      author: marketplace
+      context: schema
+      changes:
+        - sqlFile:
+            path: 001-schema.sql
+            relativeToChangelogFile: true
+            splitStatements: true
+            stripComments: true
+
+  - changeSet:
+      id: 002-sku-checkout-policy
+      author: feature013
+      context: schema
+      changes:
+        - sqlFile:
+            path: 002-sku-checkout-policy.sql
+            relativeToChangelogFile: true
+            splitStatements: true
+            stripComments: true

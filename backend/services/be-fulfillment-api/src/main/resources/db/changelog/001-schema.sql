@@ -1,0 +1,5 @@
+-- Schema only. Performance indexes and partitions intentionally live in database-labs.
+CREATE TABLE shipment (id BIGINT IDENTITY PRIMARY KEY, shipment_no VARCHAR(64) NOT NULL UNIQUE, order_id VARCHAR(64) NOT NULL, seller_id BIGINT NOT NULL, warehouse_id BIGINT NOT NULL, carrier_code VARCHAR(64) NULL, tracking_no VARCHAR(128) NULL, status VARCHAR(32) NOT NULL, created_at DATETIME2 NOT NULL, updated_at DATETIME2 NOT NULL);
+CREATE TABLE shipment_item (id BIGINT IDENTITY PRIMARY KEY, shipment_id BIGINT NOT NULL REFERENCES shipment(id), order_line_id BIGINT NOT NULL, sku_id BIGINT NOT NULL, quantity INT NOT NULL);
+CREATE TABLE inbox_event (id BIGINT IDENTITY PRIMARY KEY, consumer_name VARCHAR(128) NOT NULL, event_id VARCHAR(36) NOT NULL, processed_at DATETIME2 NOT NULL, CONSTRAINT uq_fulfillment_inbox UNIQUE(consumer_name,event_id));
+CREATE TABLE outbox_event (id BIGINT IDENTITY PRIMARY KEY, event_id VARCHAR(36) NOT NULL UNIQUE, aggregate_id VARCHAR(128) NOT NULL, event_type VARCHAR(128) NOT NULL, payload_json NVARCHAR(MAX) NOT NULL, status VARCHAR(32) NOT NULL, created_at DATETIME2 NOT NULL, processed_at DATETIME2 NULL);

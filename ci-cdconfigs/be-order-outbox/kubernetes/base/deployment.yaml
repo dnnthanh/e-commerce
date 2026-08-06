@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: be-order-outbox
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: be-order-outbox
+  template:
+    metadata:
+      labels:
+        app: be-order-outbox
+    spec:
+      containers:
+        - name: be-order-outbox
+          image: marketplace/be-order-outbox:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: be-order-outbox-config
+            - secretRef:
+                name: be-order-outbox-secret
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8080
+            initialDelaySeconds: 15
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            initialDelaySeconds: 30

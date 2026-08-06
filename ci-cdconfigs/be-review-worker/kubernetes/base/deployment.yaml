@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: be-review-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: be-review-worker
+  template:
+    metadata:
+      labels:
+        app: be-review-worker
+    spec:
+      containers:
+        - name: be-review-worker
+          image: marketplace/be-review-worker:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: be-review-worker-config
+            - secretRef:
+                name: be-review-worker-secret
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8080
+            initialDelaySeconds: 15
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            initialDelaySeconds: 30

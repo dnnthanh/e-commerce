@@ -1,0 +1,3 @@
+-- Schema only. Performance indexes and partitions intentionally live in database-labs.
+CREATE TABLE checkout_saga (id BIGSERIAL PRIMARY KEY, checkout_key VARCHAR(128) NOT NULL UNIQUE, user_id VARCHAR(64) NOT NULL, status VARCHAR(32) NOT NULL, cart_snapshot_json JSONB NOT NULL, pricing_snapshot_json JSONB NULL, reservation_json JSONB NULL, order_id VARCHAR(64) NULL, payment_id VARCHAR(64) NULL, retry_count INT NOT NULL DEFAULT 0, next_retry_at TIMESTAMP NULL, created_at TIMESTAMP NOT NULL, updated_at TIMESTAMP NOT NULL);
+CREATE TABLE checkout_saga_step (id BIGSERIAL PRIMARY KEY, saga_id BIGINT NOT NULL REFERENCES checkout_saga(id), step_name VARCHAR(64) NOT NULL, status VARCHAR(32) NOT NULL, attempt INT NOT NULL, message TEXT NULL, created_at TIMESTAMP NOT NULL);

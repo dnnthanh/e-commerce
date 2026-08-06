@@ -1,0 +1,23 @@
+databaseChangeLog:
+  - changeSet:
+      id: 001-settlement-schema
+      author: feature013
+      changes:
+        - sqlFile:
+            path: db/changelog/001-schema.sql
+            relativeToChangelogFile: false
+  - changeSet:
+      id: 002-seller-ledger
+      author: feature013
+      changes:
+        - sqlFile:
+            path: db/changelog/002-seller-ledger.sql
+            relativeToChangelogFile: false
+
+  - changeSet:
+      id: 003-settlement-lifecycle
+      author: feature013
+      changes:
+        - sqlFile:
+            path: db/changelog/003-settlement-lifecycle.sql
+            relativeToChangelogFile: false

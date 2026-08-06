@@ -1,0 +1,22 @@
+databaseChangeLog:
+  - changeSet:
+      id: 001-schema
+      author: marketplace
+      context: schema
+      changes:
+        - sqlFile:
+            path: 001-schema.sql
+            relativeToChangelogFile: true
+            splitStatements: true
+            stripComments: true
+
+  - changeSet:
+      id: 002-pricing-depth
+      author: feature013
+      context: schema
+      changes:
+        - sqlFile:
+            path: 002-pricing-depth.sql
+            relativeToChangelogFile: true
+            splitStatements: true
+            stripComments: true

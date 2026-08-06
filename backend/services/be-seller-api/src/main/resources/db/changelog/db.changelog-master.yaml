@@ -1,0 +1,33 @@
+databaseChangeLog:
+  - changeSet:
+      id: 001-schema
+      author: marketplace
+      context: schema
+      changes:
+        - sqlFile:
+            path: 001-schema.sql
+            relativeToChangelogFile: true
+            splitStatements: true
+            stripComments: true
+
+  - changeSet:
+      id: 002-seller-staff
+      author: marketplace
+      context: schema
+      changes:
+        - sqlFile:
+            path: 002-seller-staff.sql
+            relativeToChangelogFile: true
+            splitStatements: true
+            stripComments: true
+
+  - changeSet:
+      id: 003-drop-seller-staff-authorization
+      author: marketplace
+      context: schema
+      changes:
+        - sqlFile:
+            path: 003-drop-seller-staff-authorization.sql
+            relativeToChangelogFile: true
+            splitStatements: true
+            stripComments: true

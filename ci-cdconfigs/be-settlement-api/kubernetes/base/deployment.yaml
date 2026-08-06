@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: be-settlement-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: be-settlement-api
+  template:
+    metadata:
+      labels:
+        app: be-settlement-api
+    spec:
+      containers:
+        - name: be-settlement-api
+          image: marketplace/be-settlement-api:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: be-settlement-api-config
+            - secretRef:
+                name: be-settlement-api-secret
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8080
+            initialDelaySeconds: 15
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            initialDelaySeconds: 30

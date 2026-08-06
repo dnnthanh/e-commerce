@@ -1,0 +1,23 @@
+databaseChangeLog:
+  - changeSet:
+      id: 001-review-schema
+      author: feature013
+      changes:
+        - sqlFile:
+            path: db/changelog/001-schema.sql
+            relativeToChangelogFile: false
+  - changeSet:
+      id: 002-production-review
+      author: feature013
+      changes:
+        - sqlFile:
+            path: db/changelog/002-production-review.sql
+            relativeToChangelogFile: false
+
+  - changeSet:
+      id: 003-jpa-review-concurrency
+      author: feature013
+      changes:
+        - sqlFile:
+            path: db/changelog/003-jpa-review-concurrency.sql
+            relativeToChangelogFile: false

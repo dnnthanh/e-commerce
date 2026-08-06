@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: be-order-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: be-order-worker
+  template:
+    metadata:
+      labels:
+        app: be-order-worker
+    spec:
+      containers:
+        - name: be-order-worker
+          image: marketplace/be-order-worker:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: be-order-worker-config
+            - secretRef:
+                name: be-order-worker-secret
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8080
+            initialDelaySeconds: 15
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            initialDelaySeconds: 30

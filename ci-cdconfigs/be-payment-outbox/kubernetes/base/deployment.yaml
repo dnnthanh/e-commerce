@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: be-payment-outbox
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: be-payment-outbox
+  template:
+    metadata:
+      labels:
+        app: be-payment-outbox
+    spec:
+      containers:
+        - name: be-payment-outbox
+          image: marketplace/be-payment-outbox:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: be-payment-outbox-config
+            - secretRef:
+                name: be-payment-outbox-secret
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8080
+            initialDelaySeconds: 15
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            initialDelaySeconds: 30

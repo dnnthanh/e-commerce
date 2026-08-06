@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: be-fulfillment-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: be-fulfillment-worker
+  template:
+    metadata:
+      labels:
+        app: be-fulfillment-worker
+    spec:
+      containers:
+        - name: be-fulfillment-worker
+          image: marketplace/be-fulfillment-worker:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: be-fulfillment-worker-config
+            - secretRef:
+                name: be-fulfillment-worker-secret
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8080
+            initialDelaySeconds: 15
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            initialDelaySeconds: 30

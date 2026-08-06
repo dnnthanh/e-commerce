@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: be-pricing-api
+spec:
+  selector:
+    app: be-pricing-api
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080

@@ -1,0 +1,129 @@
+groups:
+  - name: marketplace-services
+    rules:
+      - alert: BackendServiceDown
+        expr: up{job="spring-backends"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Backend service {{ $labels.instance }} is down"
+
+      - alert: HighHttp5xxRate
+        expr: |
+          (
+            sum by (instance) (rate(http_server_requests_seconds_count{status=~"5.."}[5m]))
+            /
+            clamp_min(sum by (instance) (rate(http_server_requests_seconds_count[5m])), 1)
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "HTTP 5xx rate is above 5% on {{ $labels.instance }}"
+
+      - alert: HighJvmHeapUsage
+        expr: |
+          (
+            sum by(instance) (jvm_memory_used_bytes{area="heap"})
+            /
+            clamp_min(sum by(instance) (jvm_memory_max_bytes{area="heap"}), 1)
+          ) > 0.85
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "JVM heap usage above 85% on {{ $labels.instance }}"
+
+  - name: marketplace-kafka
+    rules:
+      - alert: KafkaExporterDown
+        expr: up{job="kafka-exporter"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Kafka exporter is unavailable"
+
+      - alert: KafkaConsumerLagHigh
+        expr: max by(consumergroup, topic) (kafka_consumergroup_lag) > 10000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Kafka consumer lag is high for {{ $labels.consumergroup }} / {{ $labels.topic }}"
+
+      - alert: KafkaUnderReplicatedPartitions
+        expr: kafka_server_replicamanager_underreplicatedpartitions > 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Kafka has under-replicated partitions"
+
+  - name: marketplace-databases
+    rules:
+      - alert: PostgreSQLDown
+        expr: pg_up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL is unavailable"
+
+      - alert: MySQLDown
+        expr: mysql_up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "MySQL is unavailable"
+
+      - alert: MongoDBDown
+        expr: mongodb_up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "MongoDB is unavailable"
+
+      - alert: RedisDown
+        expr: redis_up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis is unavailable"
+
+      - alert: DatabaseConnectionsNearLimit
+        expr: |
+          (
+            pg_stat_activity_count
+            /
+            clamp_min(pg_settings_max_connections, 1)
+          ) > 0.80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "PostgreSQL connections exceed 80%"
+
+  - name: marketplace-infrastructure
+    rules:
+      - alert: ContainerCpuHigh
+        expr: |
+          sum by(name) (rate(container_cpu_usage_seconds_total{name!=""}[5m])) > 0.85
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Container CPU is high: {{ $labels.name }}"
+
+      - alert: ContainerMemoryHigh
+        expr: |
+          container_memory_working_set_bytes{name!=""} > 2 * 1024 * 1024 * 1024
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Container memory exceeds 2 GiB: {{ $labels.name }}"

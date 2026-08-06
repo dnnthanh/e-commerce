@@ -1,0 +1,68 @@
+spring:
+  application:
+    name: be-fulfillment-api
+  main:
+    web-application-type: servlet
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS}
+    consumer:
+      properties:
+        spring.json.trusted.packages: com.dnnthanh.marketplace.be.*
+        spring.json.use.type.headers: true
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JacksonJsonDeserializer
+    producer:
+      properties:
+        spring.json.add.type.headers: true
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JacksonJsonSerializer
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${KEYCLOAK_ISSUER_URI}
+          jwk-set-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI}
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX:20}
+      minimum-idle: ${DB_POOL_MIN:2}
+  liquibase:
+    change-log: classpath:db/changelog/db.changelog-master.yaml
+    contexts: schema
+server:
+  port: ${SERVER_PORT:8080}
+  shutdown: graceful
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics,loggers
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: when_authorized
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLING:1.0}
+  opentelemetry:
+    tracing:
+      export:
+        otlp:
+          endpoint: ${MANAGEMENT_OTLP_TRACING_ENDPOINT}
+logging:
+  structured:
+    format:
+      console: ecs
+clients:
+  order: ${ORDER_BASE_URL}
+
+marketplace:
+  internal-security:
+    token-uri: ${KEYCLOAK_TOKEN_URI}
+    client-id: ${SERVICE_CLIENT_ID}
+    client-secret: ${SERVICE_CLIENT_SECRET}
+    authorization-base-url: ${AUTHORIZATION_BASE_URL}

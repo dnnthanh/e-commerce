@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: be-comment-outbox
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: be-comment-outbox
+  template:
+    metadata:
+      labels:
+        app: be-comment-outbox
+    spec:
+      containers:
+        - name: be-comment-outbox
+          image: marketplace/be-comment-outbox:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: be-comment-outbox-config
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8080
+            initialDelaySeconds: 15
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            initialDelaySeconds: 30

@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: be-operations-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: be-operations-worker
+  template:
+    metadata:
+      labels:
+        app: be-operations-worker
+    spec:
+      containers:
+        - name: be-operations-worker
+          image: marketplace/be-operations-worker:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: be-operations-worker-config
+            - secretRef:
+                name: be-operations-worker-secret
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8080
+            initialDelaySeconds: 15
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            initialDelaySeconds: 30

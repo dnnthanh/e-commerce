@@ -1,0 +1,2 @@
+INSERT INTO operations_incident(incident_key,incident_type,source_service,recovery_target,aggregate_id,status,severity,last_error,last_recovery_message,first_seen_at,last_seen_at,resolved_at) VALUES
+('INC-PAY-DEMO-001','PAYMENT_UNKNOWN','be-payment-job','be-payment-worker','PAY-DEMO-UNKNOWN','OPEN','HIGH','Provider state unknown after timeout',NULL,now()-interval '10 minute',now(),NULL) ON CONFLICT DO NOTHING;

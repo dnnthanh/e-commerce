@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: be-notification-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: be-notification-worker
+  template:
+    metadata:
+      labels:
+        app: be-notification-worker
+    spec:
+      containers:
+        - name: be-notification-worker
+          image: marketplace/be-notification-worker:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: be-notification-worker-config
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8080
+            initialDelaySeconds: 15
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            initialDelaySeconds: 30

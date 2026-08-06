@@ -1,0 +1,5 @@
+-- Schema only. Performance indexes and partitions intentionally live in database-labs.
+CREATE TABLE verified_purchase (id BIGINT PRIMARY KEY AUTO_INCREMENT, user_id VARCHAR(64) NOT NULL, order_line_id BIGINT NOT NULL UNIQUE, product_id BIGINT NOT NULL, sku_id BIGINT NOT NULL, delivered_at DATETIME NOT NULL);
+CREATE TABLE review (id BIGINT PRIMARY KEY AUTO_INCREMENT, user_id VARCHAR(64) NOT NULL, product_id BIGINT NOT NULL, order_line_id BIGINT NOT NULL UNIQUE, rating INT NOT NULL, title VARCHAR(255) NULL, content TEXT NULL, status VARCHAR(32) NOT NULL, created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL);
+CREATE TABLE inbox_event (id BIGINT PRIMARY KEY AUTO_INCREMENT, consumer_name VARCHAR(128) NOT NULL, event_id VARCHAR(36) NOT NULL, processed_at DATETIME NOT NULL, UNIQUE(consumer_name,event_id));
+CREATE TABLE outbox_event (id BIGINT PRIMARY KEY AUTO_INCREMENT, event_id VARCHAR(36) NOT NULL UNIQUE, aggregate_id VARCHAR(128) NOT NULL, event_type VARCHAR(128) NOT NULL, payload_json JSON NOT NULL, status VARCHAR(32) NOT NULL, created_at DATETIME NOT NULL, processed_at DATETIME NULL);

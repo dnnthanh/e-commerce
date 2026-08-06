@@ -1,0 +1,33 @@
+# syntax=docker/dockerfile:1.7
+FROM maven:3.9.11-eclipse-temurin-25 AS build
+WORKDIR /workspace/backend
+
+ENV MAVEN_OPTS="-Xms256m -Xmx2048m -XX:MaxMetaspaceSize=512m"
+
+COPY . .
+RUN --mount=type=cache,id=marketplace-maven-repository,target=/root/.m2,sharing=shared \
+    mvn -B -ntp -f pom.xml \
+      -Daether.connector.http.retryHandler.count=8 \
+      -Daether.connector.http.retryHandler.interval=2000 \
+      -Daether.connector.http.retryHandler.intervalMax=30000 \
+      -Dmaven.test.skip=true package \
+ && mkdir -p /workspace/runtime-services \
+ && for module_dir in services/be-*; do \
+      module="$(basename "$module_dir")"; \
+      jar="$(find "$module_dir/target" -maxdepth 1 -type f -name '*.jar' ! -name '*.original' ! -name '*-sources.jar' ! -name '*-javadoc.jar' | head -n 1)"; \
+      if [ -z "$jar" ]; then echo "Missing executable JAR for $module" >&2; exit 1; fi; \
+      mkdir -p "/workspace/runtime-services/$module"; \
+      cp "$jar" "/workspace/runtime-services/$module/app.jar"; \
+    done
+
+FROM eclipse-temurin:25-jre
+WORKDIR /opt/marketplace
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends curl \
+ && rm -rf /var/lib/apt/lists/* \
+ && useradd --system --uid 10001 marketplace
+COPY --from=build --chown=marketplace:marketplace /workspace/runtime-services /opt/marketplace/services
+COPY --chown=marketplace:marketplace --chmod=0755 docker/runtime-entrypoint.sh /opt/marketplace/runtime-entrypoint.sh
+USER marketplace
+EXPOSE 8080
+ENTRYPOINT ["/opt/marketplace/runtime-entrypoint.sh"]

@@ -1,0 +1,148 @@
+spring:
+  application:
+    name: be-gateway
+  main:
+    web-application-type: reactive
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS}
+    consumer:
+      properties:
+        spring.json.trusted.packages: com.dnnthanh.marketplace.be.*
+        spring.json.use.type.headers: true
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JacksonJsonDeserializer
+    producer:
+      properties:
+        spring.json.add.type.headers: true
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JacksonJsonSerializer
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${KEYCLOAK_ISSUER_URI}
+          jwk-set-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI}
+  cloud:
+    gateway:
+      server:
+        webflux:
+          routes:
+          - id: catalog
+            uri: ${CATALOG_BASE_URL}
+            predicates:
+            - Path=/products/**,/private/products/**
+          - id: media
+            uri: ${MEDIA_BASE_URL}
+            predicates:
+            - Path=/media/**,/private/media/**
+          - id: search
+            uri: ${SEARCH_BASE_URL}
+            predicates:
+            - Path=/search/**
+          - id: seller
+            uri: ${SELLER_BASE_URL}
+            predicates:
+            - Path=/shops/**,/private/sellers/**,/private/shops/**
+          - id: pricing
+            uri: ${PRICING_BASE_URL}
+            predicates:
+            - Path=/pricing/**,/private/pricing/**,/internal/pricing/**
+          - id: promotion
+            uri: ${PROMOTION_BASE_URL}
+            predicates:
+            - Path=/promotion/**,/private/promotion/**,/internal/promotion/**
+          - id: inventory
+            uri: ${INVENTORY_BASE_URL}
+            predicates:
+            - Path=/inventory/**,/private/inventory/**,/internal/inventory/**
+          - id: cart
+            uri: ${CART_BASE_URL}
+            predicates:
+            - Path=/cart/**,/private/cart/**,/internal/cart/**
+          - id: checkout
+            uri: ${CHECKOUT_BASE_URL}
+            predicates:
+            - Path=/checkout/**,/private/checkout/**,/internal/checkout/**
+          - id: order
+            uri: ${ORDER_BASE_URL}
+            predicates:
+            - Path=/order/**,/private/order/**,/internal/order/**
+          - id: payment
+            uri: ${PAYMENT_BASE_URL}
+            predicates:
+            - Path=/payment/**,/private/payment/**,/internal/payment/**
+          - id: fulfillment
+            uri: ${FULFILLMENT_BASE_URL}
+            predicates:
+            - Path=/fulfillment/**,/private/fulfillment/**,/internal/fulfillment/**
+          - id: review
+            uri: ${REVIEW_BASE_URL}
+            predicates:
+            - Path=/review/**,/private/review/**,/internal/review/**
+          - id: comment
+            uri: ${COMMENT_BASE_URL}
+            predicates:
+            - Path=/comment/**,/private/comment/**,/internal/comment/**
+          - id: notification
+            uri: ${NOTIFICATION_BASE_URL}
+            predicates:
+            - Path=/notification/**,/private/notification/**,/internal/notification/**
+          - id: notification-realtime
+            uri: ${NOTIFICATION_REALTIME_BASE_URL}
+            predicates:
+            - Path=/private/notifications/stream
+          - id: return
+            uri: ${RETURN_BASE_URL}
+            predicates:
+            - Path=/return/**,/private/return/**,/internal/return/**
+          - id: settlement
+            uri: ${SETTLEMENT_BASE_URL}
+            predicates:
+            - Path=/settlement/**,/private/settlement/**,/internal/settlement/**
+          - id: audit
+            uri: ${AUDIT_BASE_URL}
+            predicates:
+            - Path=/audit/**,/private/audit/**,/internal/audit/**
+          - id: operations
+            uri: ${OPERATIONS_BASE_URL}
+            predicates:
+            - Path=/operations/**,/private/operations/**,/internal/operations/**
+          - id: authorization
+            uri: ${AUTHORIZATION_BASE_URL}
+            predicates:
+            - Path=/private/me/**,/private/admin/security/**,/internal/authorization/**
+          httpclient:
+            connect-timeout: 2000
+            response-timeout: 5s
+server:
+  port: ${SERVER_PORT:8080}
+  shutdown: graceful
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics,loggers
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: when_authorized
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLING:1.0}
+  opentelemetry:
+    tracing:
+      export:
+        otlp:
+          endpoint: ${MANAGEMENT_OTLP_TRACING_ENDPOINT}
+logging:
+  structured:
+    format:
+      console: ecs
+
+marketplace:
+  internal-security:
+    token-uri: ${KEYCLOAK_TOKEN_URI}
+    client-id: ${SERVICE_CLIENT_ID}
+    client-secret: ${SERVICE_CLIENT_SECRET}
+    authorization-base-url: ${AUTHORIZATION_BASE_URL}

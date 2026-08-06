@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: be-promotion-api
+spec:
+  selector:
+    app: be-promotion-api
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
