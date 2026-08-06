@@ -6,7 +6,8 @@
     "start:storefront": "ng serve storefront --host 0.0.0.0 --port 4200",
     "start:admin": "ng serve admin --host 0.0.0.0 --port 4201",
     "build:storefront": "ng build storefront --configuration production",
-    "build:admin": "ng build admin --configuration production"
+    "build:admin": "ng build admin --configuration production",
+    "test:ui": "playwright test"
   },
   "dependencies": {
     "@angular/animations": "^22.0.0",
@@ -24,6 +25,7 @@
     "@angular-devkit/build-angular": "^22.0.0",
     "@angular/cli": "^22.0.0",
     "@angular/compiler-cli": "^22.0.0",
+    "@playwright/test": "^1.55.0",
     "typescript": "~6.0.0"
   }
 }
