@@ -3,6 +3,7 @@ package com.dnnthanh.marketplace.be.catalog.api.adapter.in.web;
 import com.dnnthanh.marketplace.be.catalog.api.adapter.in.web.mapper.ProductApiMapper;
 import com.dnnthanh.marketplace.be.catalog.api.api.ProductPublicApi;
 import com.dnnthanh.marketplace.be.catalog.api.api.request.search.ProductSearchRequest;
+import com.dnnthanh.marketplace.be.catalog.api.api.response.ProductOfferResponse;
 import com.dnnthanh.marketplace.be.catalog.api.api.response.ProductResponse;
 import com.dnnthanh.marketplace.be.catalog.api.application.port.in.ProductUseCase;
 import com.dnnthanh.marketplace.be.platform.api.ApiResponse;
@@ -31,5 +32,15 @@ public class ProductPublicController implements ProductPublicApi {
     @Override
     public ProductResponse get(Long productId) {
         return mapper.modelToResponse(useCase.getPublished(productId));
+    }
+
+    @Override
+    public List<ProductOfferResponse> offers(Long productId) {
+        return useCase.offers(productId).stream().map(mapper::toResponse).toList();
+    }
+
+    @Override
+    public ProductOfferResponse offer(Long skuId) {
+        return mapper.toResponse(useCase.offer(skuId));
     }
 }
