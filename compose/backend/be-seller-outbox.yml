@@ -1,0 +1,51 @@
+name: e-commerce-marketplace
+services:
+  backend-runtime-build:
+    image: e-commerce-backend-runtime:local
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.runtime
+    pull_policy: build
+    entrypoint:
+    - /bin/sh
+    - -c
+    - exit 0
+    restart: 'no'
+    networks:
+    - marketplace
+  be-seller-outbox:
+    image: e-commerce-backend-runtime:local
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      TRACING_SAMPLING: ${TRACING_SAMPLING:-0.0}
+      KEYCLOAK_ISSUER: http://localhost:8180/realms/marketplace
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/certs
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/token
+      SERVICE_CLIENT_ID: marketplace-internal
+      SERVICE_CLIENT_SECRET: local-internal-secret
+      AUTHORIZATION_BASE_URL: http://be-authorization-api:8080
+      AUTHORIZATION_URL: http://be-authorization-api:8080
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://lgtm:4318/v1/traces
+      SELLER_DB_USER: seller
+      SELLER_DB_PASSWORD: seller_password
+      SERVER_PORT: '8080'
+      DB_URL: jdbc:mysql://mysql:3306/seller_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      DB_USERNAME: seller
+      DB_PASSWORD: seller_password
+      SERVICE_MODULE: be-seller-outbox
+      JAVA_OPTS: -Xms64m -Xmx224m -XX:+UseSerialGC
+    networks:
+    - marketplace
+    pull_policy: never
+    depends_on:
+      backend-runtime-build:
+        condition: service_completed_successfully
+networks:
+  marketplace:
+    name: marketplace-network

@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: be-payment-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: be-payment-worker
+  template:
+    metadata:
+      labels:
+        app: be-payment-worker
+    spec:
+      containers:
+        - name: be-payment-worker
+          image: marketplace/be-payment-worker:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: be-payment-worker-config
+            - secretRef:
+                name: be-payment-worker-secret
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8080
+            initialDelaySeconds: 15
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            initialDelaySeconds: 30

@@ -1,0 +1,3188 @@
+name: e-commerce-marketplace
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: marketplace_admin
+      POSTGRES_PASSWORD: marketplace_admin_password
+      POSTGRES_DB: postgres
+    ports:
+    - 5432:5432
+    volumes:
+    - postgres-data:/var/lib/postgresql/data
+    - ./infrastructure/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U marketplace_admin -d postgres]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    networks:
+    - marketplace
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password
+    ports:
+    - 3306:3306
+    volumes:
+    - mysql-data:/var/lib/mysql
+    - ./infrastructure/mysql/init:/docker-entrypoint-initdb.d:ro
+    command:
+    - --character-set-server=utf8mb4
+    - --collation-server=utf8mb4_0900_ai_ci
+    healthcheck:
+      test: [CMD-SHELL, mysqladmin ping -h 127.0.0.1 -uroot -proot_password --silent]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+    networks:
+    - marketplace
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: Y
+      MSSQL_SA_PASSWORD: Marketplace!2026
+      MSSQL_PID: Developer
+      MSSQL_MEMORY_LIMIT_MB: '1536'
+    ports:
+    - 1433:1433
+    volumes:
+    - sqlserver-data:/var/opt/mssql
+    healthcheck:
+      test: [CMD-SHELL, /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$$MSSQL_SA_PASSWORD" -C -Q "SELECT 1" >/dev/null || exit 1]
+      interval: 10s
+      timeout: 10s
+      retries: 40
+      start_period: 20s
+    networks:
+    - marketplace
+  sqlserver-init:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      MSSQL_SA_PASSWORD: Marketplace!2026
+    entrypoint:
+    - /bin/bash
+    - /init/run-init.sh
+    volumes:
+    - ./infrastructure/sqlserver/init:/init:ro
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    restart: 'no'
+    networks:
+    - marketplace
+  oracle:
+    image: gvenzl/oracle-free:23-slim-faststart
+    environment:
+      ORACLE_PASSWORD: oracle_password
+      APP_USER: marketplace
+      APP_USER_PASSWORD: marketplace_password
+    ports:
+    - 1521:1521
+    volumes:
+    - oracle-data:/opt/oracle/oradata
+    healthcheck:
+      test: [CMD, healthcheck.sh]
+      interval: 10s
+      timeout: 10s
+      retries: 60
+      start_period: 30s
+    networks:
+    - marketplace
+    profiles:
+    - heavy
+    - full
+    - seed-large
+  mongo:
+    image: mongo:8.0
+    command:
+    - mongod
+    - --replSet
+    - rs0
+    - --bind_ip_all
+    ports:
+    - 27017:27017
+    volumes:
+    - mongo-data:/data/db
+    healthcheck:
+      test: [CMD-SHELL, 'mongosh --quiet --eval "db.adminCommand({ping:1}).ok" | grep 1']
+      interval: 5s
+      timeout: 5s
+      retries: 40
+    networks:
+    - marketplace
+    profiles:
+    - full
+    - seed-large
+  mongo-init:
+    image: mongo:8.0
+    entrypoint:
+    - bash
+    - -lc
+    - mongosh --host mongo:27017 /init/init-replica.js && until mongosh --host mongo:27017 --quiet --eval "rs.status().myState" | grep -q 1; do sleep 2; done
+    volumes:
+    - ./infrastructure/mongodb/init:/init:ro
+    depends_on:
+      mongo:
+        condition: service_healthy
+    restart: 'no'
+    networks:
+    - marketplace
+    profiles:
+    - full
+    - seed-large
+  redis:
+    image: redis:7.4-alpine
+    command:
+    - redis-server
+    - --appendonly
+    - 'yes'
+    ports:
+    - 6379:6379
+    volumes:
+    - redis-data:/data
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks:
+    - marketplace
+  kafka:
+    image: apache/kafka:4.3.1
+    environment:
+      KAFKA_NODE_ID: '1'
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: INTERNAL://:9092,CONTROLLER://:9093,EXTERNAL://:29092
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,EXTERNAL://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: '1'
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: '1'
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: '1'
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: '0'
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+      KAFKA_JMX_PORT: '9999'
+      KAFKA_JMX_HOSTNAME: kafka
+      KAFKA_JMX_OPTS: -Djava.rmi.server.hostname=kafka -Dcom.sun.management.jmxremote=true -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false
+      KAFKA_HEAP_OPTS: -Xms256m -Xmx512m
+    ports:
+    - 29092:29092
+    volumes:
+    - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: [CMD-SHELL, '/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1']
+      interval: 10s
+      timeout: 10s
+      retries: 40
+    networks:
+    - marketplace
+  kafka-ui:
+    image: ghcr.io/kafbat/kafka-ui:latest
+    ports:
+    - 8185:8080
+    environment:
+      KAFKA_CLUSTERS_0_NAME: marketplace
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+    - marketplace
+    profiles:
+    - observability
+  opensearch:
+    image: opensearchproject/opensearch:3.7.0
+    environment:
+      discovery.type: single-node
+      DISABLE_INSTALL_DEMO_CONFIG: 'true'
+      DISABLE_SECURITY_PLUGIN: 'true'
+      OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    ports:
+    - 9200:9200
+    volumes:
+    - opensearch-data:/usr/share/opensearch/data
+    healthcheck:
+      test: [CMD-SHELL, 'curl -fsS http://localhost:9200/_cluster/health >/dev/null']
+      interval: 10s
+      timeout: 5s
+      retries: 40
+    networks:
+    - marketplace
+  opensearch-dashboards:
+    image: opensearchproject/opensearch-dashboards:3.7.0
+    ports:
+    - 5601:5601
+    environment:
+      OPENSEARCH_HOSTS: '["http://opensearch:9200"]'
+      DISABLE_SECURITY_DASHBOARDS_PLUGIN: 'true'
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    networks:
+    - marketplace
+    profiles:
+    - observability
+  opensearch-init:
+    image: curlimages/curl:8.12.1
+    entrypoint:
+    - sh
+    - -c
+    - 'curl -fsS -XPUT -H "Content-Type: application/json" --data-binary @/config/product-index-template.json http://opensearch:9200/_index_template/marketplace-products
+      && curl -fsS -XPUT http://opensearch:9200/marketplace-products-v1 || true'
+    volumes:
+    - ./infrastructure/opensearch/product-index-template.json:/config/product-index-template.json:ro
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    restart: 'no'
+    networks:
+    - marketplace
+  minio:
+    image: quay.io/minio/minio:latest
+    command:
+    - server
+    - /data
+    - --console-address
+    - :9001
+    environment:
+      MINIO_ROOT_USER: marketplace
+      MINIO_ROOT_PASSWORD: marketplace-secret
+    ports:
+    - 9000:9000
+    - 9001:9001
+    volumes:
+    - minio-data:/data
+    healthcheck:
+      test: [CMD-SHELL, 'curl -fsS http://localhost:9000/minio/health/live >/dev/null || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    networks:
+    - marketplace
+  imgproxy:
+    image: darthsim/imgproxy:latest
+    ports:
+    - 8186:8080
+    environment:
+      IMGPROXY_BIND: 0.0.0.0:8080
+      IMGPROXY_USE_S3: 'true'
+      AWS_ACCESS_KEY_ID: marketplace
+      AWS_SECRET_ACCESS_KEY: marketplace-secret
+      IMGPROXY_S3_ENDPOINT: http://minio:9000
+      IMGPROXY_S3_REGION: us-east-1
+    depends_on:
+      minio:
+        condition: service_healthy
+    networks:
+    - marketplace
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.7.0
+    command:
+    - start-dev
+    - --import-realm
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak_db
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: keycloak_password
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HEALTH_ENABLED: 'true'
+      KC_METRICS_ENABLED: 'true'
+      KC_HTTP_ENABLED: 'true'
+      KC_HOSTNAME: http://localhost:8180
+      JAVA_OPTS_APPEND: -Xms128m -Xmx384m
+    ports:
+    - 8180:8080
+    volumes:
+    - ./infrastructure/keycloak/realm-marketplace.json:/opt/keycloak/data/import/realm-marketplace.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD-SHELL, bash -c "exec 3<>/dev/tcp/127.0.0.1/8080"]
+      interval: 10s
+      timeout: 5s
+      retries: 40
+      start_period: 20s
+    networks:
+    - marketplace
+  keycloak-bootstrap:
+    image: quay.io/keycloak/keycloak:26.7.0
+    entrypoint:
+    - /bin/bash
+    - /bootstrap/bootstrap-internal-client.sh
+    environment:
+      KEYCLOAK_INTERNAL_URL: http://keycloak:8080
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KEYCLOAK_REALM: marketplace
+      SERVICE_CLIENT_ID: marketplace-internal
+    volumes:
+    - ./infrastructure/keycloak:/bootstrap:ro
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    restart: 'no'
+    networks:
+    - marketplace
+  alloy:
+    image: grafana/alloy:v1.18.0
+    command:
+    - run
+    - /etc/alloy/config.alloy
+    - --server.http.listen-addr=0.0.0.0:12345
+    ports:
+    - 12345:12345
+    volumes:
+    - ./infrastructure/alloy/config.alloy:/etc/alloy/config.alloy:ro
+    - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      lgtm:
+        condition: service_started
+    networks:
+    - marketplace
+    profiles:
+    - observability
+  cloudbeaver:
+    image: dbeaver/cloudbeaver:latest
+    ports:
+    - 8978:8978
+    volumes:
+    - cloudbeaver-data:/opt/cloudbeaver/workspace
+    networks:
+    - marketplace
+    profiles:
+    - observability
+  backend-runtime-build:
+    image: e-commerce-backend-runtime:local
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.runtime
+    pull_policy: build
+    entrypoint:
+    - /bin/sh
+    - -c
+    - exit 0
+    restart: 'no'
+    networks:
+    - marketplace
+  be-audit-api:
+    image: e-commerce-backend-runtime:local
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      TRACING_SAMPLING: ${TRACING_SAMPLING:-0.0}
+      KEYCLOAK_ISSUER: http://localhost:8180/realms/marketplace
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/certs
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/token
+      SERVICE_CLIENT_ID: marketplace-internal
+      SERVICE_CLIENT_SECRET: local-internal-secret
+      AUTHORIZATION_BASE_URL: http://be-authorization-api:8080
+      AUTHORIZATION_URL: http://be-authorization-api:8080
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://lgtm:4318/v1/traces
+      AUDIT_DB_USER: audit_app
+      AUDIT_DB_PASSWORD: audit_password
+      SERVER_PORT: '8080'
+      DB_URL: jdbc:postgresql://postgres:5432/audit_db
+      DB_USERNAME: audit_app
+      DB_PASSWORD: audit_password
+      SERVICE_MODULE: be-audit-api
+      JAVA_OPTS: -Xms64m -Xmx320m -XX:+UseSerialGC
+    networks:
+    - marketplace
+    depends_on:
+      backend-runtime-build:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      keycloak-bootstrap:
+        condition: service_completed_successfully
+      be-authorization-api:
+        condition: service_healthy
+    ports:
+    - 8100:8080
+    healthcheck:
+      test: [CMD-SHELL, 'curl -fsS http://localhost:8080/actuator/health >/dev/null || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 40
+      start_period: 25s
+    pull_policy: never
+  be-audit-worker:
+    image: e-commerce-backend-runtime:local
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      TRACING_SAMPLING: ${TRACING_SAMPLING:-0.0}
+      KEYCLOAK_ISSUER: http://localhost:8180/realms/marketplace
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/certs
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/token
+      SERVICE_CLIENT_ID: marketplace-internal
+      SERVICE_CLIENT_SECRET: local-internal-secret
+      AUTHORIZATION_BASE_URL: http://be-authorization-api:8080
+      AUTHORIZATION_URL: http://be-authorization-api:8080
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://lgtm:4318/v1/traces
+      AUDIT_DB_USER: audit_app
+      AUDIT_DB_PASSWORD: audit_password
+      SERVER_PORT: '8080'
+      DB_URL: jdbc:postgresql://postgres:5432/audit_db
+      DB_USERNAME: audit_app
+      DB_PASSWORD: audit_password
+      SERVICE_MODULE: be-audit-worker
+      JAVA_OPTS: -Xms64m -Xmx224m -XX:+UseSerialGC
+    networks:
+    - marketplace
+    depends_on:
+      backend-runtime-build:
+        condition: service_completed_successfully
+      be-audit-api:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    pull_policy: never
+    profiles:
+    - full
+  be-authorization-api:
+    image: e-commerce-backend-runtime:local
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      TRACING_SAMPLING: ${TRACING_SAMPLING:-0.0}
+      KEYCLOAK_ISSUER: http://localhost:8180/realms/marketplace
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/certs
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/token
+      SERVICE_CLIENT_ID: marketplace-internal
+      SERVICE_CLIENT_SECRET: local-internal-secret
+      AUTHORIZATION_BASE_URL: http://be-authorization-api:8080
+      AUTHORIZATION_URL: http://be-authorization-api:8080
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://lgtm:4318/v1/traces
+      SERVER_PORT: '8080'
+      KEYCLOAK_REALM: marketplace
+      KEYCLOAK_ADMIN_CLIENT_ID: authorization-admin
+      KEYCLOAK_ADMIN_CLIENT_SECRET: authorization-admin-secret
+      DB_URL: jdbc:postgresql://postgres:5432/authorization_db
+      DB_USERNAME: authorization_app
+      DB_PASSWORD: authorization_password
+      SERVICE_MODULE: be-authorization-api
+      JAVA_OPTS: -Xms64m -Xmx320m -XX:+UseSerialGC
+    networks:
+    - marketplace
+    depends_on:
+      backend-runtime-build:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      keycloak-bootstrap:
+        condition: service_completed_successfully
+    ports:
+    - 8081:8080
+    healthcheck:
+      test: [CMD-SHELL, 'curl -fsS http://localhost:8080/actuator/health >/dev/null || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 40
+      start_period: 25s
+    pull_policy: never
+  be-cart-api:
+    image: e-commerce-backend-runtime:local
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      TRACING_SAMPLING: ${TRACING_SAMPLING:-0.0}
+      KEYCLOAK_ISSUER: http://localhost:8180/realms/marketplace
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/certs
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/token
+      SERVICE_CLIENT_ID: marketplace-internal
+      SERVICE_CLIENT_SECRET: local-internal-secret
+      AUTHORIZATION_BASE_URL: http://be-authorization-api:8080
+      AUTHORIZATION_URL: http://be-authorization-api:8080
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://lgtm:4318/v1/traces
+      DB_USERNAME: marketplace
+      DB_PASSWORD: marketplace_password
+      SERVER_PORT: '8080'
+      DB_URL: jdbc:mysql://mysql:3306/cart_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      CATALOG_BASE_URL: http://be-catalog-api:8080
+      PRICING_BASE_URL: http://be-pricing-api:8080
+      INVENTORY_BASE_URL: http://be-inventory-api:8080
+      SERVICE_MODULE: be-cart-api
+      JAVA_OPTS: -Xms64m -Xmx320m -XX:+UseSerialGC
+    networks:
+    - marketplace
+    depends_on:
+      backend-runtime-build:
+        condition: service_completed_successfully
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      keycloak-bootstrap:
+        condition: service_completed_successfully
+      be-authorization-api:
+        condition: service_healthy
+    ports:
+    - 8089:8080
+    healthcheck:
+      test: [CMD-SHELL, 'curl -fsS http://localhost:8080/actuator/health >/dev/null || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 40
+      start_period: 25s
+    pull_policy: never
+  be-catalog-api:
+    image: e-commerce-backend-runtime:local
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      TRACING_SAMPLING: ${TRACING_SAMPLING:-0.0}
+      KEYCLOAK_ISSUER: http://localhost:8180/realms/marketplace
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/certs
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/token
+      SERVICE_CLIENT_ID: marketplace-internal
+      SERVICE_CLIENT_SECRET: local-internal-secret
+      AUTHORIZATION_BASE_URL: http://be-authorization-api:8080
+      AUTHORIZATION_URL: http://be-authorization-api:8080
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://lgtm:4318/v1/traces
+      CATALOG_DB_USER: catalog
+      CATALOG_DB_PASSWORD: catalog_password
+      MEDIA_BASE_URL: http://be-media-api:8080
+      SERVER_PORT: '8080'
+      DB_URL: jdbc:postgresql://postgres:5432/catalog_db
+      DB_USERNAME: catalog
+      DB_PASSWORD: catalog_password
+      SERVICE_MODULE: be-catalog-api
+      JAVA_OPTS: -Xms64m -Xmx320m -XX:+UseSerialGC
+    networks:
+    - marketplace
+    depends_on:
+      backend-runtime-build:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      keycloak-bootstrap:
+        condition: service_completed_successfully
+      be-authorization-api:
+        condition: service_healthy
+      be-media-api:
+        condition: service_healthy
+    ports:
+    - 8083:8080
+    healthcheck:
+      test: [CMD-SHELL, 'curl -fsS http://localhost:8080/actuator/health >/dev/null || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 40
+      start_period: 25s
+    pull_policy: never
+  be-catalog-outbox:
+    image: e-commerce-backend-runtime:local
+    restart: unless-stopped
+    environment:
+      CATALOG_DB_URL: jdbc:postgresql://postgres:5432/catalog_db
+      CATALOG_DB_USER: catalog
+      CATALOG_DB_PASSWORD: catalog_password
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      OUTBOX_DELAY_MS: '500'
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://lgtm:4318/v1/traces
+      SERVER_PORT: '8080'
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/certs
+      DB_URL: jdbc:postgresql://postgres:5432/catalog_db
+      DB_USERNAME: catalog
+      DB_PASSWORD: catalog_password
+      MEDIA_BASE_URL: http://be-media-api:8080
+      SERVICE_MODULE: be-catalog-outbox
+      JAVA_OPTS: -Xms64m -Xmx224m -XX:+UseSerialGC
+    networks:
+    - marketplace
+    depends_on:
+      backend-runtime-build:
+        condition: service_completed_successfully
+      be-catalog-api:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    pull_policy: never
+    profiles:
+    - full
+  be-checkout-api:
+    image: e-commerce-backend-runtime:local
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      TRACING_SAMPLING: ${TRACING_SAMPLING:-0.0}
+      KEYCLOAK_ISSUER: http://localhost:8180/realms/marketplace
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/certs
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/token
+      SERVICE_CLIENT_ID: marketplace-internal
+      SERVICE_CLIENT_SECRET: local-internal-secret
+      AUTHORIZATION_BASE_URL: http://be-authorization-api:8080
+      AUTHORIZATION_URL: http://be-authorization-api:8080
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://lgtm:4318/v1/traces
+      DB_USERNAME: checkout_app
+      DB_PASSWORD: checkout_password
+      SERVER_PORT: '8080'
+      DB_URL: jdbc:postgresql://postgres:5432/checkout_db
+      PRICING_BASE_URL: http://be-pricing-api:8080
+      PROMOTION_BASE_URL: http://be-promotion-api:8080
+      INVENTORY_BASE_URL: http://be-inventory-api:8080
+      ORDER_BASE_URL: http://be-order-api:8080
+      PAYMENT_BASE_URL: http://be-payment-api:8080
+      SERVICE_MODULE: be-checkout-api
+      JAVA_OPTS: -Xms64m -Xmx320m -XX:+UseSerialGC
+    networks:
+    - marketplace
+    depends_on:
+      backend-runtime-build:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      keycloak-bootstrap:
+        condition: service_completed_successfully
+      be-authorization-api:
+        condition: service_healthy
+    ports:
+    - 8090:8080
+    healthcheck:
+      test: [CMD-SHELL, 'curl -fsS http://localhost:8080/actuator/health >/dev/null || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 40
+      start_period: 25s
+    pull_policy: never
+  be-checkout-job:
+    image: e-commerce-backend-runtime:local
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      TRACING_SAMPLING: ${TRACING_SAMPLING:-0.0}
+      KEYCLOAK_ISSUER: http://localhost:8180/realms/marketplace
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/certs
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/token
+      SERVICE_CLIENT_ID: marketplace-internal
+      SERVICE_CLIENT_SECRET: local-internal-secret
+      AUTHORIZATION_BASE_URL: http://be-authorization-api:8080
+      AUTHORIZATION_URL: http://be-authorization-api:8080
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://lgtm:4318/v1/traces
+      DB_USERNAME: checkout_app
+      DB_PASSWORD: checkout_password
+      SERVER_PORT: '8080'
+      DB_URL: jdbc:postgresql://postgres:5432/checkout_db
+      PRICING_BASE_URL: http://be-pricing-api:8080
+      PROMOTION_BASE_URL: http://be-promotion-api:8080
+      INVENTORY_BASE_URL: http://be-inventory-api:8080
+      CHECKOUT_BASE_URL: http://be-checkout-api:8080
+      ORDER_BASE_URL: http://be-order-api:8080
+      PAYMENT_BASE_URL: http://be-payment-api:8080
+      SERVICE_MODULE: be-checkout-job
+      JAVA_OPTS: -Xms64m -Xmx224m -XX:+UseSerialGC
+    networks:
+    - marketplace
+    depends_on:
+      backend-runtime-build:
+        condition: service_completed_successfully
+      be-checkout-api:
+        condition: service_healthy
+    pull_policy: never
+    profiles:
+    - full
+  be-comment-api:
+    image: e-commerce-backend-runtime:local
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      TRACING_SAMPLING: ${TRACING_SAMPLING:-0.0}
+      KEYCLOAK_ISSUER: http://localhost:8180/realms/marketplace
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/certs
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/token
+      SERVICE_CLIENT_ID: marketplace-internal
+      SERVICE_CLIENT_SECRET: local-internal-secret
+      AUTHORIZATION_BASE_URL: http://be-authorization-api:8080
+      AUTHORIZATION_URL: http://be-authorization-api:8080
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://lgtm:4318/v1/traces
+      COMMENT_MONGODB_URI: mongodb://mongo:27017/comment_db?replicaSet=rs0
+      SERVER_PORT: '8080'
+      MONGODB_URI: mongodb://mongo:27017/comment_db?replicaSet=rs0
+      SERVICE_MODULE: be-comment-api
+      JAVA_OPTS: -Xms64m -Xmx320m -XX:+UseSerialGC
+    networks:
+    - marketplace
+    depends_on:
+      backend-runtime-build:
+        condition: service_completed_successfully
+      mongo-init:
+        condition: service_completed_successfully
+      keycloak-bootstrap:
+        condition: service_completed_successfully
+      be-authorization-api:
+        condition: service_healthy
+    ports:
+    - 8095:8080
+    healthcheck:
+      test: [CMD-SHELL, 'curl -fsS http://localhost:8080/actuator/health >/dev/null || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 40
+      start_period: 25s
+    pull_policy: never
+    profiles:
+    - full
+    - seed-large
+  be-comment-outbox:
+    image: e-commerce-backend-runtime:local
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      TRACING_SAMPLING: ${TRACING_SAMPLING:-0.0}
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://lgtm:4318/v1/traces
+      COMMENT_MONGODB_URI: mongodb://mongo:27017/comment_db?replicaSet=rs0
+      OUTBOX_DELAY_MS: '500'
+      SERVER_PORT: '8080'
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/certs
+      MONGODB_URI: mongodb://mongo:27017/comment_db?replicaSet=rs0
+      SERVICE_MODULE: be-comment-outbox
+      JAVA_OPTS: -Xms64m -Xmx224m -XX:+UseSerialGC
+    networks:
+    - marketplace
+    depends_on:
+      backend-runtime-build:
+        condition: service_completed_successfully
+      be-comment-api:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      mongo-init:
+        condition: service_completed_successfully
+    pull_policy: never
+    profiles:
+    - full
+  be-fulfillment-api:
+    image: e-commerce-backend-runtime:local
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      TRACING_SAMPLING: ${TRACING_SAMPLING:-0.0}
+      KEYCLOAK_ISSUER: http://localhost:8180/realms/marketplace
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/certs
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/token
+      SERVICE_CLIENT_ID: marketplace-internal
+      SERVICE_CLIENT_SECRET: local-internal-secret
+      AUTHORIZATION_BASE_URL: http://be-authorization-api:8080
+      AUTHORIZATION_URL: http://be-authorization-api:8080
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://lgtm:4318/v1/traces
+      DB_USERNAME: sa
+      DB_PASSWORD: Marketplace!2026
+      SERVER_PORT: '8080'
+      DB_URL: jdbc:sqlserver://sqlserver:1433;databaseName=fulfillment_db;encrypt=false;trustServerCertificate=true
+      ORDER_BASE_URL: http://be-order-api:8080
+      SERVICE_MODULE: be-fulfillment-api
+      JAVA_OPTS: -Xms64m -Xmx320m -XX:+UseSerialGC
+    networks:
+    - marketplace
+    depends_on:
+      backend-runtime-build:
+        condition: service_completed_successfully
+      sqlserver-init:
+        condition: service_completed_successfully
+      keycloak-bootstrap:
+        condition: service_completed_successfully
+      be-authorization-api:
+        condition: service_healthy
+    ports:
+    - 8094:8080
+    healthcheck:
+      test: [CMD-SHELL, 'curl -fsS http://localhost:8080/actuator/health >/dev/null || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 40
+      start_period: 25s
+    pull_policy: never
+  be-fulfillment-outbox:
+    image: e-commerce-backend-runtime:local
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      TRACING_SAMPLING: ${TRACING_SAMPLING:-0.0}
+      KEYCLOAK_ISSUER: http://localhost:8180/realms/marketplace
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/certs
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/token
+      SERVICE_CLIENT_ID: marketplace-internal
+      SERVICE_CLIENT_SECRET: local-internal-secret
+      AUTHORIZATION_BASE_URL: http://be-authorization-api:8080
+      AUTHORIZATION_URL: http://be-authorization-api:8080
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://lgtm:4318/v1/traces
+      DB_USERNAME: sa
+      DB_PASSWORD: Marketplace!2026
+      SERVER_PORT: '8080'
+      DB_URL: jdbc:sqlserver://sqlserver:1433;databaseName=fulfillment_db;encrypt=false;trustServerCertificate=true
+      SERVICE_MODULE: be-fulfillment-outbox
+      JAVA_OPTS: -Xms64m -Xmx224m -XX:+UseSerialGC
+    networks:
+    - marketplace
+    depends_on:
+      backend-runtime-build:
+        condition: service_completed_successfully
+      be-fulfillment-api:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    pull_policy: never
+    profiles:
+    - full
+  be-fulfillment-worker:
+    image: e-commerce-backend-runtime:local
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      TRACING_SAMPLING: ${TRACING_SAMPLING:-0.0}
+      KEYCLOAK_ISSUER: http://localhost:8180/realms/marketplace
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/certs
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/token
+      SERVICE_CLIENT_ID: marketplace-internal
+      SERVICE_CLIENT_SECRET: local-internal-secret
+      AUTHORIZATION_BASE_URL: http://be-authorization-api:8080
+      AUTHORIZATION_URL: http://be-authorization-api:8080
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://lgtm:4318/v1/traces
+      DB_USERNAME: sa
+      DB_PASSWORD: Marketplace!2026
+      SERVER_PORT: '8080'
+      DB_URL: jdbc:sqlserver://sqlserver:1433;databaseName=fulfillment_db;encrypt=false;trustServerCertificate=true
+      INVENTORY_BASE_URL: http://be-inventory-api:8080
+      ORDER_BASE_URL: http://be-order-api:8080
+      SERVICE_MODULE: be-fulfillment-worker
+      JAVA_OPTS: -Xms64m -Xmx224m -XX:+UseSerialGC
+    networks:
+    - marketplace
+    depends_on:
+      backend-runtime-build:
+        condition: service_completed_successfully
+      be-fulfillment-api:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    pull_policy: never
+    profiles:
+    - full
+  be-gateway:
+    image: e-commerce-backend-runtime:local
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      TRACING_SAMPLING: ${TRACING_SAMPLING:-0.0}
+      KEYCLOAK_ISSUER: http://localhost:8180/realms/marketplace
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/certs
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/token
+      SERVICE_CLIENT_ID: marketplace-internal
+      SERVICE_CLIENT_SECRET: local-internal-secret
+      AUTHORIZATION_BASE_URL: http://be-authorization-api:8080
+      AUTHORIZATION_URL: http://be-authorization-api:8080
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://lgtm:4318/v1/traces
+      SERVER_PORT: '8080'
+      CATALOG_BASE_URL: http://be-catalog-api:8080
+      MEDIA_BASE_URL: http://be-media-api:8080
+      SEARCH_BASE_URL: http://be-search-api:8080
+      SELLER_BASE_URL: http://be-seller-api:8080
+      PRICING_BASE_URL: http://be-pricing-api:8080
+      PROMOTION_BASE_URL: http://be-promotion-api:8080
+      INVENTORY_BASE_URL: http://be-inventory-api:8080
+      CART_BASE_URL: http://be-cart-api:8080
+      CHECKOUT_BASE_URL: http://be-checkout-api:8080
+      ORDER_BASE_URL: http://be-order-api:8080
+      PAYMENT_BASE_URL: http://be-payment-api:8080
+      FULFILLMENT_BASE_URL: http://be-fulfillment-api:8080
+      REVIEW_BASE_URL: http://be-review-api:8080
+      COMMENT_BASE_URL: http://be-comment-api:8080
+      NOTIFICATION_BASE_URL: http://be-notification-api:8080
+      NOTIFICATION_REALTIME_BASE_URL: http://be-notification-realtime:8080
+      RETURN_BASE_URL: http://be-return-api:8080
+      SETTLEMENT_BASE_URL: http://be-settlement-api:8080
+      AUDIT_BASE_URL: http://be-audit-api:8080
+      OPERATIONS_BASE_URL: http://be-operations-api:8080
+      SERVICE_MODULE: be-gateway
+      JAVA_OPTS: -Xms64m -Xmx320m -XX:+UseSerialGC
+    networks:
+    - marketplace
+    depends_on:
+      backend-runtime-build:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      keycloak-bootstrap:
+        condition: service_completed_successfully
+      be-authorization-api:
+        condition: service_healthy
+      be-seller-api:
+        condition: service_healthy
+      be-catalog-api:
+        condition: service_healthy
+      be-media-api:
+        condition: service_healthy
+      be-search-api:
+        condition: service_healthy
+      be-pricing-api:
+        condition: service_healthy
+      be-promotion-api:
+        condition: service_healthy
+      be-inventory-api:
+        condition: service_healthy
+      be-cart-api:
+        condition: service_healthy
+      be-checkout-api:
+        condition: service_healthy
+      be-order-api:
+        condition: service_healthy
+      be-payment-api:
+        condition: service_healthy
+      be-fulfillment-api:
+        condition: service_healthy
+      be-review-api:
+        condition: service_healthy
+      be-return-api:
+        condition: service_healthy
+      be-audit-api:
+        condition: service_healthy
+      be-operations-api:
+        condition: service_healthy
+    ports:
+    - 8080:8080
+    healthcheck:
+      test: [CMD-SHELL, 'curl -fsS http://localhost:8080/actuator/health >/dev/null || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 40
+      start_period: 25s
+    pull_policy: never
+  be-inventory-api:
+    image: e-commerce-backend-runtime:local
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      TRACING_SAMPLING: ${TRACING_SAMPLING:-0.0}
+      KEYCLOAK_ISSUER: http://localhost:8180/realms/marketplace
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/certs
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/token
+      SERVICE_CLIENT_ID: marketplace-internal
+      SERVICE_CLIENT_SECRET: local-internal-secret
+      AUTHORIZATION_BASE_URL: http://be-authorization-api:8080
+      AUTHORIZATION_URL: http://be-authorization-api:8080
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://lgtm:4318/v1/traces
+      INVENTORY_DB_USER: inventory_app
+      INVENTORY_DB_PASSWORD: inventory_password
+      SERVER_PORT: '8080'
+      DB_URL: jdbc:postgresql://postgres:5432/inventory_db
+      DB_USERNAME: inventory_app
+      DB_PASSWORD: inventory_password
+      SERVICE_MODULE: be-inventory-api
+      JAVA_OPTS: -Xms64m -Xmx320m -XX:+UseSerialGC
+    networks:
+    - marketplace
+    depends_on:
+      backend-runtime-build:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      keycloak-bootstrap:
+        condition: service_completed_successfully
+      be-authorization-api:
+        condition: service_healthy
+    ports:
+    - 8088:8080
+    healthcheck:
+      test: [CMD-SHELL, 'curl -fsS http://localhost:8080/actuator/health >/dev/null || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 40
+      start_period: 25s
+    pull_policy: never
+  be-inventory-job:
+    image: e-commerce-backend-runtime:local
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      TRACING_SAMPLING: ${TRACING_SAMPLING:-0.0}
+      KEYCLOAK_ISSUER: http://localhost:8180/realms/marketplace
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/certs
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/token
+      SERVICE_CLIENT_ID: marketplace-internal
+      SERVICE_CLIENT_SECRET: local-internal-secret
+      AUTHORIZATION_BASE_URL: http://be-authorization-api:8080
+      AUTHORIZATION_URL: http://be-authorization-api:8080
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://lgtm:4318/v1/traces
+      INVENTORY_DB_USER: inventory_app
+      INVENTORY_DB_PASSWORD: inventory_password
+      SERVER_PORT: '8080'
+      DB_URL: jdbc:postgresql://postgres:5432/inventory_db
+      DB_USERNAME: inventory_app
+      DB_PASSWORD: inventory_password
+      SERVICE_MODULE: be-inventory-job
+      JAVA_OPTS: -Xms64m -Xmx224m -XX:+UseSerialGC
+    networks:
+    - marketplace
+    depends_on:
+      backend-runtime-build:
+        condition: service_completed_successfully
+      be-inventory-api:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    pull_policy: never
+    profiles:
+    - full
+  be-inventory-outbox:
+    image: e-commerce-backend-runtime:local
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      TRACING_SAMPLING: ${TRACING_SAMPLING:-0.0}
+      KEYCLOAK_ISSUER: http://localhost:8180/realms/marketplace
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/certs
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/token
+      SERVICE_CLIENT_ID: marketplace-internal
+      SERVICE_CLIENT_SECRET: local-internal-secret
+      AUTHORIZATION_BASE_URL: http://be-authorization-api:8080
+      AUTHORIZATION_URL: http://be-authorization-api:8080
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://lgtm:4318/v1/traces
+      INVENTORY_DB_USER: inventory_app
+      INVENTORY_DB_PASSWORD: inventory_password
+      SERVER_PORT: '8080'
+      DB_URL: jdbc:postgresql://postgres:5432/inventory_db
+      DB_USERNAME: inventory_app
+      DB_PASSWORD: inventory_password
+      SERVICE_MODULE: be-inventory-outbox
+      JAVA_OPTS: -Xms64m -Xmx224m -XX:+UseSerialGC
+    networks:
+    - marketplace
+    depends_on:
+      backend-runtime-build:
+        condition: service_completed_successfully
+      be-inventory-api:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    pull_policy: never
+    profiles:
+    - full
+  be-inventory-worker:
+    image: e-commerce-backend-runtime:local
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      TRACING_SAMPLING: ${TRACING_SAMPLING:-0.0}
+      KEYCLOAK_ISSUER: http://localhost:8180/realms/marketplace
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/certs
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/token
+      SERVICE_CLIENT_ID: marketplace-internal
+      SERVICE_CLIENT_SECRET: local-internal-secret
+      AUTHORIZATION_BASE_URL: http://be-authorization-api:8080
+      AUTHORIZATION_URL: http://be-authorization-api:8080
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://lgtm:4318/v1/traces
+      INVENTORY_DB_USER: inventory_app
+      INVENTORY_DB_PASSWORD: inventory_password
+      SERVER_PORT: '8080'
+      DB_URL: jdbc:postgresql://postgres:5432/inventory_db
+      DB_USERNAME: inventory_app
+      DB_PASSWORD: inventory_password
+      SERVICE_MODULE: be-inventory-worker
+      JAVA_OPTS: -Xms64m -Xmx224m -XX:+UseSerialGC
+    networks:
+    - marketplace
+    depends_on:
+      backend-runtime-build:
+        condition: service_completed_successfully
+      be-inventory-api:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    pull_policy: never
+    profiles:
+    - full
+  be-media-api:
+    image: e-commerce-backend-runtime:local
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      TRACING_SAMPLING: ${TRACING_SAMPLING:-0.0}
+      KEYCLOAK_ISSUER: http://localhost:8180/realms/marketplace
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/certs
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/token
+      SERVICE_CLIENT_ID: marketplace-internal
+      SERVICE_CLIENT_SECRET: local-internal-secret
+      AUTHORIZATION_BASE_URL: http://be-authorization-api:8080
+      AUTHORIZATION_URL: http://be-authorization-api:8080
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://lgtm:4318/v1/traces
+      DB_USERNAME: media_user
+      DB_PASSWORD: media_password
+      MINIO_ACCESS_KEY: marketplace
+      MINIO_SECRET_KEY: marketplace-secret
+      MINIO_BUCKET: marketplace-media
+      MINIO_PUBLIC_BASE_URL: http://localhost:9000
+      IMGPROXY_URL: http://imgproxy:8080
+      SERVER_PORT: '8080'
+      DB_URL: jdbc:postgresql://postgres:5432/media_db
+      MINIO_ENDPOINT: http://minio:9000
+      SERVICE_MODULE: be-media-api
+      JAVA_OPTS: -Xms64m -Xmx320m -XX:+UseSerialGC
+    networks:
+    - marketplace
+    depends_on:
+      backend-runtime-build:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      keycloak-bootstrap:
+        condition: service_completed_successfully
+      be-authorization-api:
+        condition: service_healthy
+    ports:
+    - 8084:8080
+    healthcheck:
+      test: [CMD-SHELL, 'curl -fsS http://localhost:8080/actuator/health >/dev/null || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 40
+      start_period: 25s
+    pull_policy: never
+  be-media-outbox:
+    image: e-commerce-backend-runtime:local
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      TRACING_SAMPLING: ${TRACING_SAMPLING:-0.0}
+      KEYCLOAK_ISSUER: http://localhost:8180/realms/marketplace
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/certs
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/token
+      SERVICE_CLIENT_ID: marketplace-internal
+      SERVICE_CLIENT_SECRET: local-internal-secret
+      AUTHORIZATION_BASE_URL: http://be-authorization-api:8080
+      AUTHORIZATION_URL: http://be-authorization-api:8080
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://lgtm:4318/v1/traces
+      DB_USERNAME: media_user
+      DB_PASSWORD: media_password
+      MINIO_ACCESS_KEY: marketplace
+      MINIO_SECRET_KEY: marketplace-secret
+      MINIO_BUCKET: marketplace-media
+      MINIO_PUBLIC_BASE_URL: http://localhost:9000
+      IMGPROXY_URL: http://imgproxy:8080
+      SERVER_PORT: '8080'
+      DB_URL: jdbc:postgresql://postgres:5432/media_db
+      MINIO_ENDPOINT: http://minio:9000
+      SERVICE_MODULE: be-media-outbox
+      JAVA_OPTS: -Xms64m -Xmx224m -XX:+UseSerialGC
+    networks:
+    - marketplace
+    depends_on:
+      backend-runtime-build:
+        condition: service_completed_successfully
+      be-media-api:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    pull_policy: never
+    profiles:
+    - full
+  be-media-worker:
+    image: e-commerce-backend-runtime:local
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      TRACING_SAMPLING: ${TRACING_SAMPLING:-0.0}
+      KEYCLOAK_ISSUER: http://localhost:8180/realms/marketplace
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/certs
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/token
+      SERVICE_CLIENT_ID: marketplace-internal
+      SERVICE_CLIENT_SECRET: local-internal-secret
+      AUTHORIZATION_BASE_URL: http://be-authorization-api:8080
+      AUTHORIZATION_URL: http://be-authorization-api:8080
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://lgtm:4318/v1/traces
+      DB_USERNAME: media_user
+      DB_PASSWORD: media_password
+      MINIO_ACCESS_KEY: marketplace
+      MINIO_SECRET_KEY: marketplace-secret
+      MINIO_BUCKET: marketplace-media
+      MINIO_PUBLIC_BASE_URL: http://localhost:9000
+      IMGPROXY_URL: http://imgproxy:8080
+      SERVER_PORT: '8080'
+      DB_URL: jdbc:postgresql://postgres:5432/media_db
+      MINIO_ENDPOINT: http://minio:9000
+      SERVICE_MODULE: be-media-worker
+      JAVA_OPTS: -Xms64m -Xmx224m -XX:+UseSerialGC
+    networks:
+    - marketplace
+    depends_on:
+      backend-runtime-build:
+        condition: service_completed_successfully
+      be-media-api:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    pull_policy: never
+    profiles:
+    - full
+  be-notification-api:
+    image: e-commerce-backend-runtime:local
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      TRACING_SAMPLING: ${TRACING_SAMPLING:-0.0}
+      KEYCLOAK_ISSUER: http://localhost:8180/realms/marketplace
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/certs
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/token
+      SERVICE_CLIENT_ID: marketplace-internal
+      SERVICE_CLIENT_SECRET: local-internal-secret
+      AUTHORIZATION_BASE_URL: http://be-authorization-api:8080
+      AUTHORIZATION_URL: http://be-authorization-api:8080
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://lgtm:4318/v1/traces
+      NOTIFICATION_MONGO_URI: mongodb://mongo:27017/notification_db?replicaSet=rs0
+      NOTIFICATION_SERVICE_CLIENT_ID: marketplace-internal
+      NOTIFICATION_SERVICE_CLIENT_SECRET: local-internal-secret
+      SERVER_PORT: '8080'
+      MONGODB_URI: mongodb://mongo:27017/notification_db?replicaSet=rs0
+      SERVICE_MODULE: be-notification-api
+      JAVA_OPTS: -Xms64m -Xmx320m -XX:+UseSerialGC
+    networks:
+    - marketplace
+    depends_on:
+      backend-runtime-build:
+        condition: service_completed_successfully
+      mongo-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      keycloak-bootstrap:
+        condition: service_completed_successfully
+    ports:
+    - 8097:8080
+    healthcheck:
+      test: [CMD-SHELL, 'curl -fsS http://localhost:8080/actuator/health >/dev/null || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 40
+      start_period: 25s
+    pull_policy: never
+    profiles:
+    - full
+    - seed-large
+  be-notification-realtime:
+    image: e-commerce-backend-runtime:local
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      TRACING_SAMPLING: ${TRACING_SAMPLING:-0.0}
+      KEYCLOAK_ISSUER: http://localhost:8180/realms/marketplace
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/certs
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/token
+      SERVICE_CLIENT_ID: marketplace-internal
+      SERVICE_CLIENT_SECRET: local-internal-secret
+      AUTHORIZATION_BASE_URL: http://be-authorization-api:8080
+      AUTHORIZATION_URL: http://be-authorization-api:8080
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://lgtm:4318/v1/traces
+      NOTIFICATION_MONGO_URI: mongodb://mongo:27017/notification_db?replicaSet=rs0
+      NOTIFICATION_SERVICE_CLIENT_ID: marketplace-internal
+      NOTIFICATION_SERVICE_CLIENT_SECRET: local-internal-secret
+      SERVER_PORT: '8080'
+      MONGODB_URI: mongodb://mongo:27017/notification_db?replicaSet=rs0
+      SERVICE_MODULE: be-notification-realtime
+      JAVA_OPTS: -Xms64m -Xmx320m -XX:+UseSerialGC
+    networks:
+    - marketplace
+    depends_on:
+      backend-runtime-build:
+        condition: service_completed_successfully
+      mongo-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      keycloak-bootstrap:
+        condition: service_completed_successfully
+    ports:
+    - 8098:8080
+    healthcheck:
+      test: [CMD-SHELL, 'curl -fsS http://localhost:8080/actuator/health >/dev/null || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 40
+      start_period: 25s
+    pull_policy: never
+    profiles:
+    - full
+  be-notification-worker:
+    image: e-commerce-backend-runtime:local
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      TRACING_SAMPLING: ${TRACING_SAMPLING:-0.0}
+      KEYCLOAK_ISSUER: http://localhost:8180/realms/marketplace
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/certs
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/token
+      SERVICE_CLIENT_ID: marketplace-internal
+      SERVICE_CLIENT_SECRET: local-internal-secret
+      AUTHORIZATION_BASE_URL: http://be-authorization-api:8080
+      AUTHORIZATION_URL: http://be-authorization-api:8080
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://lgtm:4318/v1/traces
+      NOTIFICATION_MONGO_URI: mongodb://mongo:27017/notification_db?replicaSet=rs0
+      NOTIFICATION_SERVICE_CLIENT_ID: marketplace-internal
+      NOTIFICATION_SERVICE_CLIENT_SECRET: local-internal-secret
+      SERVER_PORT: '8080'
+      MONGODB_URI: mongodb://mongo:27017/notification_db?replicaSet=rs0
+      SERVICE_MODULE: be-notification-worker
+      JAVA_OPTS: -Xms64m -Xmx224m -XX:+UseSerialGC
+    networks:
+    - marketplace
+    depends_on:
+      backend-runtime-build:
+        condition: service_completed_successfully
+      be-notification-api:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    pull_policy: never
+    profiles:
+    - full
+  be-operations-api:
+    image: e-commerce-backend-runtime:local
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      TRACING_SAMPLING: ${TRACING_SAMPLING:-0.0}
+      KEYCLOAK_ISSUER: http://localhost:8180/realms/marketplace
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/certs
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/token
+      SERVICE_CLIENT_ID: marketplace-internal
+      SERVICE_CLIENT_SECRET: local-internal-secret
+      AUTHORIZATION_BASE_URL: http://be-authorization-api:8080
+      AUTHORIZATION_URL: http://be-authorization-api:8080
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://lgtm:4318/v1/traces
+      DB_USERNAME: operations_user
+      DB_PASSWORD: operations_password
+      SERVER_PORT: '8080'
+      DB_URL: jdbc:postgresql://postgres:5432/operations_db
+      SERVICE_MODULE: be-operations-api
+      JAVA_OPTS: -Xms64m -Xmx320m -XX:+UseSerialGC
+    networks:
+    - marketplace
+    depends_on:
+      backend-runtime-build:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      keycloak-bootstrap:
+        condition: service_completed_successfully
+      be-authorization-api:
+        condition: service_healthy
+    ports:
+    - 8101:8080
+    healthcheck:
+      test: [CMD-SHELL, 'curl -fsS http://localhost:8080/actuator/health >/dev/null || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 40
+      start_period: 25s
+    pull_policy: never
+  be-operations-outbox:
+    image: e-commerce-backend-runtime:local
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      TRACING_SAMPLING: ${TRACING_SAMPLING:-0.0}
+      KEYCLOAK_ISSUER: http://localhost:8180/realms/marketplace
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/certs
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/token
+      SERVICE_CLIENT_ID: marketplace-internal
+      SERVICE_CLIENT_SECRET: local-internal-secret
+      AUTHORIZATION_BASE_URL: http://be-authorization-api:8080
+      AUTHORIZATION_URL: http://be-authorization-api:8080
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://lgtm:4318/v1/traces
+      DB_USERNAME: operations_user
+      DB_PASSWORD: operations_password
+      SERVER_PORT: '8080'
+      DB_URL: jdbc:postgresql://postgres:5432/operations_db
+      SERVICE_MODULE: be-operations-outbox
+      JAVA_OPTS: -Xms64m -Xmx224m -XX:+UseSerialGC
+    networks:
+    - marketplace
+    depends_on:
+      backend-runtime-build:
+        condition: service_completed_successfully
+      be-operations-api:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    pull_policy: never
+    profiles:
+    - full
+  be-operations-worker:
+    image: e-commerce-backend-runtime:local
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      TRACING_SAMPLING: ${TRACING_SAMPLING:-0.0}
+      KEYCLOAK_ISSUER: http://localhost:8180/realms/marketplace
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/certs
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/token
+      SERVICE_CLIENT_ID: marketplace-internal
+      SERVICE_CLIENT_SECRET: local-internal-secret
+      AUTHORIZATION_BASE_URL: http://be-authorization-api:8080
+      AUTHORIZATION_URL: http://be-authorization-api:8080
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://lgtm:4318/v1/traces
+      DB_USERNAME: operations_user
+      DB_PASSWORD: operations_password
+      SERVER_PORT: '8080'
+      DB_URL: jdbc:postgresql://postgres:5432/operations_db
+      SERVICE_MODULE: be-operations-worker
+      JAVA_OPTS: -Xms64m -Xmx224m -XX:+UseSerialGC
+    networks:
+    - marketplace
+    depends_on:
+      backend-runtime-build:
+        condition: service_completed_successfully
+      be-operations-api:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    pull_policy: never
+    profiles:
+    - full
+  be-order-api:
+    image: e-commerce-backend-runtime:local
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      TRACING_SAMPLING: ${TRACING_SAMPLING:-0.0}
+      KEYCLOAK_ISSUER: http://localhost:8180/realms/marketplace
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/certs
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/token
+      SERVICE_CLIENT_ID: marketplace-internal
+      SERVICE_CLIENT_SECRET: local-internal-secret
+      AUTHORIZATION_BASE_URL: http://be-authorization-api:8080
+      AUTHORIZATION_URL: http://be-authorization-api:8080
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://lgtm:4318/v1/traces
+      ORDER_DB_USER: sa
+      ORDER_DB_PASSWORD: Marketplace!2026
+      SERVER_PORT: '8080'
+      DB_URL: jdbc:sqlserver://sqlserver:1433;databaseName=order_db;encrypt=false;trustServerCertificate=true
+      DB_USERNAME: sa
+      DB_PASSWORD: Marketplace!2026
+      SERVICE_MODULE: be-order-api
+      JAVA_OPTS: -Xms64m -Xmx320m -XX:+UseSerialGC
+    networks:
+    - marketplace
+    depends_on:
+      backend-runtime-build:
+        condition: service_completed_successfully
+      sqlserver-init:
+        condition: service_completed_successfully
+      keycloak-bootstrap:
+        condition: service_completed_successfully
+      be-authorization-api:
+        condition: service_healthy
+    ports:
+    - 8091:8080
+    healthcheck:
+      test: [CMD-SHELL, 'curl -fsS http://localhost:8080/actuator/health >/dev/null || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 40
+      start_period: 25s
+    pull_policy: never
+  be-order-outbox:
+    image: e-commerce-backend-runtime:local
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      TRACING_SAMPLING: ${TRACING_SAMPLING:-0.0}
+      KEYCLOAK_ISSUER: http://localhost:8180/realms/marketplace
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/certs
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/token
+      SERVICE_CLIENT_ID: marketplace-internal
+      SERVICE_CLIENT_SECRET: local-internal-secret
+      AUTHORIZATION_BASE_URL: http://be-authorization-api:8080
+      AUTHORIZATION_URL: http://be-authorization-api:8080
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://lgtm:4318/v1/traces
+      ORDER_DB_USER: sa
+      ORDER_DB_PASSWORD: Marketplace!2026
+      SERVER_PORT: '8080'
+      DB_URL: jdbc:sqlserver://sqlserver:1433;databaseName=order_db;encrypt=false;trustServerCertificate=true
+      DB_USERNAME: sa
+      DB_PASSWORD: Marketplace!2026
+      SERVICE_MODULE: be-order-outbox
+      JAVA_OPTS: -Xms64m -Xmx224m -XX:+UseSerialGC
+    networks:
+    - marketplace
+    depends_on:
+      backend-runtime-build:
+        condition: service_completed_successfully
+      be-order-api:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    pull_policy: never
+    profiles:
+    - full
+  be-order-worker:
+    image: e-commerce-backend-runtime:local
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      TRACING_SAMPLING: ${TRACING_SAMPLING:-0.0}
+      KEYCLOAK_ISSUER: http://localhost:8180/realms/marketplace
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/certs
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/token
+      SERVICE_CLIENT_ID: marketplace-internal
+      SERVICE_CLIENT_SECRET: local-internal-secret
+      AUTHORIZATION_BASE_URL: http://be-authorization-api:8080
+      AUTHORIZATION_URL: http://be-authorization-api:8080
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://lgtm:4318/v1/traces
+      ORDER_DB_USER: sa
+      ORDER_DB_PASSWORD: Marketplace!2026
+      SERVER_PORT: '8080'
+      DB_URL: jdbc:sqlserver://sqlserver:1433;databaseName=order_db;encrypt=false;trustServerCertificate=true
+      DB_USERNAME: sa
+      DB_PASSWORD: Marketplace!2026
+      SERVICE_MODULE: be-order-worker
+      JAVA_OPTS: -Xms64m -Xmx224m -XX:+UseSerialGC
+    networks:
+    - marketplace
+    depends_on:
+      backend-runtime-build:
+        condition: service_completed_successfully
+      be-order-api:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    pull_policy: never
+    profiles:
+    - full
+  be-payment-api:
+    image: e-commerce-backend-runtime:local
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      TRACING_SAMPLING: ${TRACING_SAMPLING:-0.0}
+      KEYCLOAK_ISSUER: http://localhost:8180/realms/marketplace
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/certs
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/token
+      SERVICE_CLIENT_ID: marketplace-internal
+      SERVICE_CLIENT_SECRET: local-internal-secret
+      AUTHORIZATION_BASE_URL: http://be-authorization-api:8080
+      AUTHORIZATION_URL: http://be-authorization-api:8080
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://lgtm:4318/v1/traces
+      PAYMENT_DB_USER: payment_app
+      PAYMENT_DB_PASSWORD: payment_password
+      PAYMENT_SIMULATOR_URL: http://be-payment-simulator:8080
+      MOMO_BASE_URL: http://be-payment-simulator:8080
+      VNPAY_BASE_URL: http://be-payment-simulator:8080
+      VIETQR_BASE_URL: http://be-payment-simulator:8080
+      SERVER_PORT: '8080'
+      DB_URL: jdbc:postgresql://postgres:5432/payment_db
+      DB_USERNAME: payment_app
+      DB_PASSWORD: payment_password
+      SERVICE_MODULE: be-payment-api
+      JAVA_OPTS: -Xms64m -Xmx320m -XX:+UseSerialGC
+    networks:
+    - marketplace
+    depends_on:
+      backend-runtime-build:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      keycloak-bootstrap:
+        condition: service_completed_successfully
+      be-authorization-api:
+        condition: service_healthy
+      be-payment-simulator:
+        condition: service_healthy
+    ports:
+    - 8092:8080
+    healthcheck:
+      test: [CMD-SHELL, 'curl -fsS http://localhost:8080/actuator/health >/dev/null || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 40
+      start_period: 25s
+    pull_policy: never
+  be-payment-job:
+    image: e-commerce-backend-runtime:local
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      TRACING_SAMPLING: ${TRACING_SAMPLING:-0.0}
+      KEYCLOAK_ISSUER: http://localhost:8180/realms/marketplace
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/certs
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/token
+      SERVICE_CLIENT_ID: marketplace-internal
+      SERVICE_CLIENT_SECRET: local-internal-secret
+      AUTHORIZATION_BASE_URL: http://be-authorization-api:8080
+      AUTHORIZATION_URL: http://be-authorization-api:8080
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://lgtm:4318/v1/traces
+      PAYMENT_DB_USER: payment_app
+      PAYMENT_DB_PASSWORD: payment_password
+      PAYMENT_SIMULATOR_URL: http://be-payment-simulator:8080
+      MOMO_BASE_URL: http://be-payment-simulator:8080
+      VNPAY_BASE_URL: http://be-payment-simulator:8080
+      VIETQR_BASE_URL: http://be-payment-simulator:8080
+      SERVER_PORT: '8080'
+      DB_URL: jdbc:postgresql://postgres:5432/payment_db
+      DB_USERNAME: payment_app
+      DB_PASSWORD: payment_password
+      PAYMENT_API_URL: http://be-payment-api:8080
+      SERVICE_MODULE: be-payment-job
+      JAVA_OPTS: -Xms64m -Xmx224m -XX:+UseSerialGC
+    networks:
+    - marketplace
+    depends_on:
+      backend-runtime-build:
+        condition: service_completed_successfully
+      be-payment-api:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    pull_policy: never
+    profiles:
+    - full
+  be-payment-outbox:
+    image: e-commerce-backend-runtime:local
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      TRACING_SAMPLING: ${TRACING_SAMPLING:-0.0}
+      KEYCLOAK_ISSUER: http://localhost:8180/realms/marketplace
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/certs
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/token
+      SERVICE_CLIENT_ID: marketplace-internal
+      SERVICE_CLIENT_SECRET: local-internal-secret
+      AUTHORIZATION_BASE_URL: http://be-authorization-api:8080
+      AUTHORIZATION_URL: http://be-authorization-api:8080
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://lgtm:4318/v1/traces
+      PAYMENT_DB_USER: payment_app
+      PAYMENT_DB_PASSWORD: payment_password
+      SERVER_PORT: '8080'
+      DB_URL: jdbc:postgresql://postgres:5432/payment_db
+      DB_USERNAME: payment_app
+      DB_PASSWORD: payment_password
+      PAYMENT_SIMULATOR_URL: http://be-payment-simulator:8080
+      SERVICE_MODULE: be-payment-outbox
+      JAVA_OPTS: -Xms64m -Xmx224m -XX:+UseSerialGC
+    networks:
+    - marketplace
+    depends_on:
+      backend-runtime-build:
+        condition: service_completed_successfully
+      be-payment-api:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    pull_policy: never
+    profiles:
+    - full
+  be-payment-simulator:
+    image: e-commerce-backend-runtime:local
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      TRACING_SAMPLING: ${TRACING_SAMPLING:-0.0}
+      KEYCLOAK_ISSUER: http://localhost:8180/realms/marketplace
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/certs
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/token
+      SERVICE_CLIENT_ID: marketplace-internal
+      SERVICE_CLIENT_SECRET: local-internal-secret
+      AUTHORIZATION_BASE_URL: http://be-authorization-api:8080
+      AUTHORIZATION_URL: http://be-authorization-api:8080
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://lgtm:4318/v1/traces
+      PAYMENT_DB_USER: payment_app
+      PAYMENT_DB_PASSWORD: payment_password
+      SERVER_PORT: '8080'
+      DB_URL: jdbc:postgresql://postgres:5432/payment_db
+      DB_USERNAME: payment_app
+      DB_PASSWORD: payment_password
+      PAYMENT_SIMULATOR_URL: http://be-payment-simulator:8080
+      PAYMENT_RESULT_URL: http://localhost:4200/orders
+      SERVICE_MODULE: be-payment-simulator
+      JAVA_OPTS: -Xms64m -Xmx320m -XX:+UseSerialGC
+    networks:
+    - marketplace
+    ports:
+    - 8199:8080
+    healthcheck:
+      test: [CMD-SHELL, 'curl -fsS http://localhost:8080/actuator/health >/dev/null || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 40
+      start_period: 25s
+    pull_policy: never
+    depends_on:
+      backend-runtime-build:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+  be-payment-worker:
+    image: e-commerce-backend-runtime:local
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      TRACING_SAMPLING: ${TRACING_SAMPLING:-0.0}
+      KEYCLOAK_ISSUER: http://localhost:8180/realms/marketplace
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/certs
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/token
+      SERVICE_CLIENT_ID: marketplace-internal
+      SERVICE_CLIENT_SECRET: local-internal-secret
+      AUTHORIZATION_BASE_URL: http://be-authorization-api:8080
+      AUTHORIZATION_URL: http://be-authorization-api:8080
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://lgtm:4318/v1/traces
+      PAYMENT_DB_USER: payment_app
+      PAYMENT_DB_PASSWORD: payment_password
+      SERVER_PORT: '8080'
+      DB_URL: jdbc:postgresql://postgres:5432/payment_db
+      DB_USERNAME: payment_app
+      DB_PASSWORD: payment_password
+      PAYMENT_API_URL: http://be-payment-api:8080
+      PAYMENT_SIMULATOR_URL: http://be-payment-simulator:8080
+      SERVICE_MODULE: be-payment-worker
+      JAVA_OPTS: -Xms64m -Xmx224m -XX:+UseSerialGC
+    networks:
+    - marketplace
+    depends_on:
+      backend-runtime-build:
+        condition: service_completed_successfully
+      be-payment-api:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    pull_policy: never
+    profiles:
+    - full
+  be-pricing-api:
+    image: e-commerce-backend-runtime:local
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      TRACING_SAMPLING: ${TRACING_SAMPLING:-0.0}
+      KEYCLOAK_ISSUER: http://localhost:8180/realms/marketplace
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/certs
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/token
+      SERVICE_CLIENT_ID: marketplace-internal
+      SERVICE_CLIENT_SECRET: local-internal-secret
+      AUTHORIZATION_BASE_URL: http://be-authorization-api:8080
+      AUTHORIZATION_URL: http://be-authorization-api:8080
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://lgtm:4318/v1/traces
+      PRICING_DB_USER: pricing_app
+      PRICING_DB_PASSWORD: pricing_password
+      SERVER_PORT: '8080'
+      DB_URL: jdbc:postgresql://postgres:5432/pricing_db
+      DB_USERNAME: pricing_app
+      DB_PASSWORD: pricing_password
+      SERVICE_MODULE: be-pricing-api
+      JAVA_OPTS: -Xms64m -Xmx320m -XX:+UseSerialGC
+    networks:
+    - marketplace
+    depends_on:
+      backend-runtime-build:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    ports:
+    - 8086:8080
+    healthcheck:
+      test: [CMD-SHELL, 'curl -fsS http://localhost:8080/actuator/health >/dev/null || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 40
+      start_period: 25s
+    pull_policy: never
+  be-promotion-api:
+    image: e-commerce-backend-runtime:local
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      TRACING_SAMPLING: ${TRACING_SAMPLING:-0.0}
+      KEYCLOAK_ISSUER: http://localhost:8180/realms/marketplace
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/certs
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/token
+      SERVICE_CLIENT_ID: marketplace-internal
+      SERVICE_CLIENT_SECRET: local-internal-secret
+      AUTHORIZATION_BASE_URL: http://be-authorization-api:8080
+      AUTHORIZATION_URL: http://be-authorization-api:8080
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://lgtm:4318/v1/traces
+      PROMOTION_DB_USER: promotion_app
+      PROMOTION_DB_PASSWORD: promotion_password
+      SERVER_PORT: '8080'
+      DB_URL: jdbc:postgresql://postgres:5432/promotion_db
+      DB_USERNAME: promotion_app
+      DB_PASSWORD: promotion_password
+      SERVICE_MODULE: be-promotion-api
+      JAVA_OPTS: -Xms64m -Xmx320m -XX:+UseSerialGC
+    networks:
+    - marketplace
+    depends_on:
+      backend-runtime-build:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    ports:
+    - 8087:8080
+    healthcheck:
+      test: [CMD-SHELL, 'curl -fsS http://localhost:8080/actuator/health >/dev/null || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 40
+      start_period: 25s
+    pull_policy: never
+  be-return-api:
+    image: e-commerce-backend-runtime:local
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      TRACING_SAMPLING: ${TRACING_SAMPLING:-0.0}
+      KEYCLOAK_ISSUER: http://localhost:8180/realms/marketplace
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/certs
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/token
+      SERVICE_CLIENT_ID: marketplace-internal
+      SERVICE_CLIENT_SECRET: local-internal-secret
+      AUTHORIZATION_BASE_URL: http://be-authorization-api:8080
+      AUTHORIZATION_URL: http://be-authorization-api:8080
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://lgtm:4318/v1/traces
+      RETURN_DB_USER: return_user
+      RETURN_DB_PASSWORD: return_password
+      SERVER_PORT: '8080'
+      DB_URL: jdbc:postgresql://postgres:5432/return_db
+      DB_USERNAME: return_user
+      DB_PASSWORD: return_password
+      INVENTORY_BASE_URL: http://be-inventory-api:8080
+      ORDER_BASE_URL: http://be-order-api:8080
+      PAYMENT_BASE_URL: http://be-payment-api:8080
+      SERVICE_MODULE: be-return-api
+      JAVA_OPTS: -Xms64m -Xmx320m -XX:+UseSerialGC
+    networks:
+    - marketplace
+    depends_on:
+      backend-runtime-build:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      keycloak-bootstrap:
+        condition: service_completed_successfully
+      be-authorization-api:
+        condition: service_healthy
+    ports:
+    - 8099:8080
+    healthcheck:
+      test: [CMD-SHELL, 'curl -fsS http://localhost:8080/actuator/health >/dev/null || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 40
+      start_period: 25s
+    pull_policy: never
+  be-return-outbox:
+    image: e-commerce-backend-runtime:local
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      TRACING_SAMPLING: ${TRACING_SAMPLING:-0.0}
+      KEYCLOAK_ISSUER: http://localhost:8180/realms/marketplace
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/certs
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/token
+      SERVICE_CLIENT_ID: marketplace-internal
+      SERVICE_CLIENT_SECRET: local-internal-secret
+      AUTHORIZATION_BASE_URL: http://be-authorization-api:8080
+      AUTHORIZATION_URL: http://be-authorization-api:8080
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://lgtm:4318/v1/traces
+      RETURN_DB_USER: return_user
+      RETURN_DB_PASSWORD: return_password
+      SERVER_PORT: '8080'
+      DB_URL: jdbc:postgresql://postgres:5432/return_db
+      DB_USERNAME: return_user
+      DB_PASSWORD: return_password
+      INVENTORY_BASE_URL: http://be-inventory-api:8080
+      ORDER_BASE_URL: http://be-order-api:8080
+      PAYMENT_BASE_URL: http://be-payment-api:8080
+      SERVICE_MODULE: be-return-outbox
+      JAVA_OPTS: -Xms64m -Xmx224m -XX:+UseSerialGC
+    networks:
+    - marketplace
+    depends_on:
+      backend-runtime-build:
+        condition: service_completed_successfully
+      be-return-api:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    pull_policy: never
+    profiles:
+    - full
+  be-return-worker:
+    image: e-commerce-backend-runtime:local
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      TRACING_SAMPLING: ${TRACING_SAMPLING:-0.0}
+      KEYCLOAK_ISSUER: http://localhost:8180/realms/marketplace
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/certs
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/token
+      SERVICE_CLIENT_ID: marketplace-internal
+      SERVICE_CLIENT_SECRET: local-internal-secret
+      AUTHORIZATION_BASE_URL: http://be-authorization-api:8080
+      AUTHORIZATION_URL: http://be-authorization-api:8080
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://lgtm:4318/v1/traces
+      RETURN_DB_USER: return_user
+      RETURN_DB_PASSWORD: return_password
+      SERVER_PORT: '8080'
+      DB_URL: jdbc:postgresql://postgres:5432/return_db
+      DB_USERNAME: return_user
+      DB_PASSWORD: return_password
+      INVENTORY_BASE_URL: http://be-inventory-api:8080
+      ORDER_BASE_URL: http://be-order-api:8080
+      PAYMENT_BASE_URL: http://be-payment-api:8080
+      SERVICE_MODULE: be-return-worker
+      JAVA_OPTS: -Xms64m -Xmx224m -XX:+UseSerialGC
+    networks:
+    - marketplace
+    depends_on:
+      backend-runtime-build:
+        condition: service_completed_successfully
+      be-return-api:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    pull_policy: never
+    profiles:
+    - full
+  be-review-api:
+    image: e-commerce-backend-runtime:local
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      TRACING_SAMPLING: ${TRACING_SAMPLING:-0.0}
+      KEYCLOAK_ISSUER: http://localhost:8180/realms/marketplace
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/certs
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/token
+      SERVICE_CLIENT_ID: marketplace-internal
+      SERVICE_CLIENT_SECRET: local-internal-secret
+      AUTHORIZATION_BASE_URL: http://be-authorization-api:8080
+      AUTHORIZATION_URL: http://be-authorization-api:8080
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://lgtm:4318/v1/traces
+      DB_USERNAME: review_user
+      DB_PASSWORD: review_password
+      SERVER_PORT: '8080'
+      DB_URL: jdbc:mysql://mysql:3306/review_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      SERVICE_MODULE: be-review-api
+      JAVA_OPTS: -Xms64m -Xmx320m -XX:+UseSerialGC
+    networks:
+    - marketplace
+    depends_on:
+      backend-runtime-build:
+        condition: service_completed_successfully
+      mysql:
+        condition: service_healthy
+      keycloak-bootstrap:
+        condition: service_completed_successfully
+      be-authorization-api:
+        condition: service_healthy
+    ports:
+    - 8096:8080
+    healthcheck:
+      test: [CMD-SHELL, 'curl -fsS http://localhost:8080/actuator/health >/dev/null || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 40
+      start_period: 25s
+    pull_policy: never
+  be-review-outbox:
+    image: e-commerce-backend-runtime:local
+    restart: unless-stopped
+    environment:
+      DB_URL: jdbc:mysql://mysql:3306/review_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      DB_USERNAME: review_user
+      DB_PASSWORD: review_password
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      OUTBOX_DELAY_MS: '500'
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://lgtm:4318/v1/traces
+      SERVER_PORT: '8080'
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/certs
+      SERVICE_MODULE: be-review-outbox
+      JAVA_OPTS: -Xms64m -Xmx224m -XX:+UseSerialGC
+    networks:
+    - marketplace
+    depends_on:
+      backend-runtime-build:
+        condition: service_completed_successfully
+      be-review-api:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    pull_policy: never
+    profiles:
+    - full
+  be-review-worker:
+    image: e-commerce-backend-runtime:local
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      TRACING_SAMPLING: ${TRACING_SAMPLING:-0.0}
+      KEYCLOAK_ISSUER: http://localhost:8180/realms/marketplace
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/certs
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/token
+      SERVICE_CLIENT_ID: marketplace-internal
+      SERVICE_CLIENT_SECRET: local-internal-secret
+      AUTHORIZATION_BASE_URL: http://be-authorization-api:8080
+      AUTHORIZATION_URL: http://be-authorization-api:8080
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://lgtm:4318/v1/traces
+      CATALOG_BASE_URL: http://be-catalog-api:8080
+      DB_USERNAME: review_user
+      DB_PASSWORD: review_password
+      SERVER_PORT: '8080'
+      DB_URL: jdbc:mysql://mysql:3306/review_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      ORDER_BASE_URL: http://be-order-api:8080
+      SERVICE_MODULE: be-review-worker
+      JAVA_OPTS: -Xms64m -Xmx224m -XX:+UseSerialGC
+    networks:
+    - marketplace
+    depends_on:
+      backend-runtime-build:
+        condition: service_completed_successfully
+      be-review-api:
+        condition: service_healthy
+      be-catalog-api:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    pull_policy: never
+    profiles:
+    - full
+  be-search-api:
+    image: e-commerce-backend-runtime:local
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      TRACING_SAMPLING: ${TRACING_SAMPLING:-0.0}
+      KEYCLOAK_ISSUER: http://localhost:8180/realms/marketplace
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/certs
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/token
+      SERVICE_CLIENT_ID: marketplace-internal
+      SERVICE_CLIENT_SECRET: local-internal-secret
+      AUTHORIZATION_BASE_URL: http://be-authorization-api:8080
+      AUTHORIZATION_URL: http://be-authorization-api:8080
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://lgtm:4318/v1/traces
+      OPENSEARCH_URL: http://opensearch:9200
+      OPENSEARCH_PRODUCT_INDEX: marketplace-products-v1
+      SERVER_PORT: '8080'
+      SERVICE_MODULE: be-search-api
+      JAVA_OPTS: -Xms64m -Xmx320m -XX:+UseSerialGC
+    networks:
+    - marketplace
+    depends_on:
+      backend-runtime-build:
+        condition: service_completed_successfully
+      opensearch:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+    - 8085:8080
+    healthcheck:
+      test: [CMD-SHELL, 'curl -fsS http://localhost:8080/actuator/health >/dev/null || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 40
+      start_period: 25s
+    pull_policy: never
+  be-search-worker:
+    image: e-commerce-backend-runtime:local
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      OPENSEARCH_URL: http://opensearch:9200
+      OPENSEARCH_PRODUCT_INDEX: marketplace-products-v1
+      MEDIA_PUBLIC_BASE_URL: http://localhost:9000/marketplace-media
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://lgtm:4318/v1/traces
+      SERVER_PORT: '8080'
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/certs
+      REVIEW_API_URL: http://be-review-api:8080
+      SERVICE_MODULE: be-search-worker
+      JAVA_OPTS: -Xms64m -Xmx224m -XX:+UseSerialGC
+    networks:
+    - marketplace
+    depends_on:
+      backend-runtime-build:
+        condition: service_completed_successfully
+      kafka:
+        condition: service_healthy
+      opensearch-init:
+        condition: service_completed_successfully
+    pull_policy: never
+    profiles:
+    - full
+  be-seller-api:
+    image: e-commerce-backend-runtime:local
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      TRACING_SAMPLING: ${TRACING_SAMPLING:-0.0}
+      KEYCLOAK_ISSUER: http://localhost:8180/realms/marketplace
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/certs
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/token
+      SERVICE_CLIENT_ID: marketplace-internal
+      SERVICE_CLIENT_SECRET: local-internal-secret
+      AUTHORIZATION_BASE_URL: http://be-authorization-api:8080
+      AUTHORIZATION_URL: http://be-authorization-api:8080
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://lgtm:4318/v1/traces
+      SELLER_DB_USER: seller
+      SELLER_DB_PASSWORD: seller_password
+      SERVER_PORT: '8080'
+      DB_URL: jdbc:mysql://mysql:3306/seller_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      DB_USERNAME: seller
+      DB_PASSWORD: seller_password
+      SERVICE_MODULE: be-seller-api
+      JAVA_OPTS: -Xms64m -Xmx320m -XX:+UseSerialGC
+    networks:
+    - marketplace
+    depends_on:
+      backend-runtime-build:
+        condition: service_completed_successfully
+      mysql:
+        condition: service_healthy
+      keycloak-bootstrap:
+        condition: service_completed_successfully
+      be-authorization-api:
+        condition: service_healthy
+    ports:
+    - 8082:8080
+    healthcheck:
+      test: [CMD-SHELL, 'curl -fsS http://localhost:8080/actuator/health >/dev/null || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 40
+      start_period: 25s
+    pull_policy: never
+  be-seller-outbox:
+    image: e-commerce-backend-runtime:local
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      TRACING_SAMPLING: ${TRACING_SAMPLING:-0.0}
+      KEYCLOAK_ISSUER: http://localhost:8180/realms/marketplace
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/certs
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/token
+      SERVICE_CLIENT_ID: marketplace-internal
+      SERVICE_CLIENT_SECRET: local-internal-secret
+      AUTHORIZATION_BASE_URL: http://be-authorization-api:8080
+      AUTHORIZATION_URL: http://be-authorization-api:8080
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://lgtm:4318/v1/traces
+      SELLER_DB_USER: seller
+      SELLER_DB_PASSWORD: seller_password
+      SERVER_PORT: '8080'
+      DB_URL: jdbc:mysql://mysql:3306/seller_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      DB_USERNAME: seller
+      DB_PASSWORD: seller_password
+      SERVICE_MODULE: be-seller-outbox
+      JAVA_OPTS: -Xms64m -Xmx224m -XX:+UseSerialGC
+    networks:
+    - marketplace
+    depends_on:
+      backend-runtime-build:
+        condition: service_completed_successfully
+      be-seller-api:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    pull_policy: never
+    profiles:
+    - full
+  be-settlement-api:
+    image: e-commerce-backend-runtime:local
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      TRACING_SAMPLING: ${TRACING_SAMPLING:-0.0}
+      KEYCLOAK_ISSUER: http://localhost:8180/realms/marketplace
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/certs
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/token
+      SERVICE_CLIENT_ID: marketplace-internal
+      SERVICE_CLIENT_SECRET: local-internal-secret
+      AUTHORIZATION_BASE_URL: http://be-authorization-api:8080
+      AUTHORIZATION_URL: http://be-authorization-api:8080
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://lgtm:4318/v1/traces
+      DB_USERNAME: marketplace
+      DB_PASSWORD: marketplace_password
+      SERVER_PORT: '8080'
+      DB_URL: jdbc:oracle:thin:@oracle:1521/FREEPDB1
+      SERVICE_MODULE: be-settlement-api
+      JAVA_OPTS: -Xms64m -Xmx320m -XX:+UseSerialGC
+    networks:
+    - marketplace
+    depends_on:
+      backend-runtime-build:
+        condition: service_completed_successfully
+      oracle:
+        condition: service_healthy
+      keycloak-bootstrap:
+        condition: service_completed_successfully
+      be-authorization-api:
+        condition: service_healthy
+    ports:
+    - 8093:8080
+    healthcheck:
+      test: [CMD-SHELL, 'curl -fsS http://localhost:8080/actuator/health >/dev/null || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 40
+      start_period: 25s
+    pull_policy: never
+    profiles:
+    - heavy
+    - full
+    - seed-large
+  be-settlement-job:
+    image: e-commerce-backend-runtime:local
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      TRACING_SAMPLING: ${TRACING_SAMPLING:-0.0}
+      KEYCLOAK_ISSUER: http://localhost:8180/realms/marketplace
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/certs
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/token
+      SERVICE_CLIENT_ID: marketplace-internal
+      SERVICE_CLIENT_SECRET: local-internal-secret
+      AUTHORIZATION_BASE_URL: http://be-authorization-api:8080
+      AUTHORIZATION_URL: http://be-authorization-api:8080
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://lgtm:4318/v1/traces
+      DB_USERNAME: marketplace
+      DB_PASSWORD: marketplace_password
+      SERVER_PORT: '8080'
+      DB_URL: jdbc:oracle:thin:@oracle:1521/FREEPDB1
+      SERVICE_MODULE: be-settlement-job
+      JAVA_OPTS: -Xms64m -Xmx224m -XX:+UseSerialGC
+    networks:
+    - marketplace
+    depends_on:
+      backend-runtime-build:
+        condition: service_completed_successfully
+      be-settlement-api:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    pull_policy: never
+    profiles:
+    - heavy
+    - full
+  be-settlement-outbox:
+    image: e-commerce-backend-runtime:local
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      TRACING_SAMPLING: ${TRACING_SAMPLING:-0.0}
+      KEYCLOAK_ISSUER: http://localhost:8180/realms/marketplace
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/certs
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/token
+      SERVICE_CLIENT_ID: marketplace-internal
+      SERVICE_CLIENT_SECRET: local-internal-secret
+      AUTHORIZATION_BASE_URL: http://be-authorization-api:8080
+      AUTHORIZATION_URL: http://be-authorization-api:8080
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://lgtm:4318/v1/traces
+      DB_USERNAME: marketplace
+      DB_PASSWORD: marketplace_password
+      SERVER_PORT: '8080'
+      DB_URL: jdbc:oracle:thin:@oracle:1521/FREEPDB1
+      SERVICE_MODULE: be-settlement-outbox
+      JAVA_OPTS: -Xms64m -Xmx224m -XX:+UseSerialGC
+    networks:
+    - marketplace
+    depends_on:
+      backend-runtime-build:
+        condition: service_completed_successfully
+      be-settlement-api:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    pull_policy: never
+    profiles:
+    - heavy
+    - full
+  be-settlement-worker:
+    image: e-commerce-backend-runtime:local
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      TRACING_SAMPLING: ${TRACING_SAMPLING:-0.0}
+      KEYCLOAK_ISSUER: http://localhost:8180/realms/marketplace
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8180/realms/marketplace
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/certs
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/marketplace/protocol/openid-connect/token
+      SERVICE_CLIENT_ID: marketplace-internal
+      SERVICE_CLIENT_SECRET: local-internal-secret
+      AUTHORIZATION_BASE_URL: http://be-authorization-api:8080
+      AUTHORIZATION_URL: http://be-authorization-api:8080
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://lgtm:4318/v1/traces
+      DB_USERNAME: marketplace
+      DB_PASSWORD: marketplace_password
+      SERVER_PORT: '8080'
+      DB_URL: jdbc:oracle:thin:@oracle:1521/FREEPDB1
+      ORDER_BASE_URL: http://be-order-api:8080
+      SERVICE_MODULE: be-settlement-worker
+      JAVA_OPTS: -Xms64m -Xmx224m -XX:+UseSerialGC
+    networks:
+    - marketplace
+    depends_on:
+      backend-runtime-build:
+        condition: service_completed_successfully
+      be-settlement-api:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    pull_policy: never
+    profiles:
+    - heavy
+    - full
+  seed-postgres-demo:
+    image: postgres:17-alpine
+    environment:
+      PGPASSWORD: catalog_password
+    entrypoint:
+    - sh
+    - -c
+    - 'set -e
+
+      PGPASSWORD=catalog_password psql -h postgres -U catalog -d catalog_db -f /seed/catalog.sql
+
+      PGPASSWORD=pricing_password psql -h postgres -U pricing_app -d pricing_db -f /seed/pricing.sql
+
+      PGPASSWORD=promotion_password psql -h postgres -U promotion_app -d promotion_db -f /seed/promotion.sql
+
+      PGPASSWORD=inventory_password psql -h postgres -U inventory_app -d inventory_db -f /seed/inventory.sql
+
+      PGPASSWORD=media_password psql -h postgres -U media_user -d media_db -f /seed/media.sql
+
+      PGPASSWORD=operations_password psql -h postgres -U operations_user -d operations_db -f /seed/operations.sql
+
+      PGPASSWORD=audit_password psql -h postgres -U audit_app -d audit_db -f /seed/audit.sql
+
+      PGPASSWORD=authorization_password psql -h postgres -U authorization_app -d authorization_db -f /seed/authorization.sql
+
+      PGPASSWORD=payment_password psql -h postgres -U payment_app -d payment_db -f /seed/payment.sql
+
+      PGPASSWORD=checkout_password psql -h postgres -U checkout_app -d checkout_db -f /seed/checkout.sql
+
+      PGPASSWORD=return_password psql -h postgres -U return_user -d return_db -f /seed/return.sql
+
+      '
+    volumes:
+    - ./data/seed-demo/postgresql:/seed:ro
+    depends_on:
+      be-catalog-api:
+        condition: service_healthy
+      be-pricing-api:
+        condition: service_healthy
+      be-promotion-api:
+        condition: service_healthy
+      be-inventory-api:
+        condition: service_healthy
+      be-media-api:
+        condition: service_healthy
+      be-operations-api:
+        condition: service_healthy
+      be-audit-api:
+        condition: service_healthy
+      be-authorization-api:
+        condition: service_healthy
+      be-payment-api:
+        condition: service_healthy
+      be-checkout-api:
+        condition: service_healthy
+      be-return-api:
+        condition: service_healthy
+    restart: 'no'
+    networks:
+    - marketplace
+  seed-mysql-demo:
+    image: mysql:8.4
+    environment:
+      MYSQL_PWD: root_password
+    entrypoint:
+    - sh
+    - -c
+    - 'set -e
+
+      mysql -h mysql -uroot -proot_password seller_db < /seed/seller.sql
+
+      mysql -h mysql -uroot -proot_password review_db < /seed/review.sql
+
+      mysql -h mysql -uroot -proot_password cart_db < /seed/cart.sql
+
+      '
+    volumes:
+    - ./data/seed-demo/mysql:/seed:ro
+    depends_on:
+      be-seller-api:
+        condition: service_healthy
+      be-review-api:
+        condition: service_healthy
+      be-cart-api:
+        condition: service_healthy
+    restart: 'no'
+    networks:
+    - marketplace
+  seed-sqlserver-demo:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      MSSQL_SA_PASSWORD: Marketplace!2026
+    entrypoint:
+    - /bin/bash
+    - -lc
+    - 'set -e
+
+      /opt/mssql-tools18/bin/sqlcmd -S sqlserver -U sa -P "$$MSSQL_SA_PASSWORD" -C -d order_db -i /seed/order.sql
+
+      /opt/mssql-tools18/bin/sqlcmd -S sqlserver -U sa -P "$$MSSQL_SA_PASSWORD" -C -d fulfillment_db -i /seed/fulfillment.sql
+
+      '
+    volumes:
+    - ./data/seed-demo/sqlserver:/seed:ro
+    depends_on:
+      be-order-api:
+        condition: service_healthy
+      be-fulfillment-api:
+        condition: service_healthy
+    restart: 'no'
+    networks:
+    - marketplace
+  seed-oracle-demo:
+    image: gvenzl/oracle-free:23-slim-faststart
+    entrypoint:
+    - /bin/bash
+    - -lc
+    - echo exit | sqlplus -s marketplace/marketplace_password@oracle:1521/FREEPDB1 @/seed/settlement.sql
+    volumes:
+    - ./data/seed-demo/oracle:/seed:ro
+    depends_on:
+      be-settlement-api:
+        condition: service_healthy
+    restart: 'no'
+    networks:
+    - marketplace
+    profiles:
+    - heavy
+    - full
+  seed-mongo-demo:
+    image: mongo:8.0
+    entrypoint:
+    - bash
+    - -lc
+    - 'set -e
+
+      mongosh ''mongodb://mongo:27017/comment_db?replicaSet=rs0'' /seed/comment.js
+
+      mongosh ''mongodb://mongo:27017/notification_db?replicaSet=rs0'' /seed/notification.js
+
+      '
+    volumes:
+    - ./data/seed-demo/mongodb:/seed:ro
+    depends_on:
+      be-comment-api:
+        condition: service_healthy
+      mongo-init:
+        condition: service_completed_successfully
+      be-notification-api:
+        condition: service_healthy
+    restart: 'no'
+    networks:
+    - marketplace
+    profiles:
+    - full
+  media-seed:
+    build:
+      context: infrastructure/media-seed
+      dockerfile: Dockerfile
+    image: e-commerce-media-seed:local
+    environment:
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ROOT_USER: marketplace
+      MINIO_ROOT_PASSWORD: marketplace-secret
+      MINIO_BUCKET: marketplace-media
+    depends_on:
+      minio:
+        condition: service_healthy
+      seed-postgres-demo:
+        condition: service_completed_successfully
+    restart: 'no'
+    networks:
+    - marketplace
+    pull_policy: build
+  seed-opensearch-demo:
+    image: curlimages/curl:8.12.1
+    entrypoint:
+    - sh
+    - /seed/seed-demo.sh
+    environment:
+      OPENSEARCH_URL: http://opensearch:9200
+      OPENSEARCH_PRODUCT_INDEX: marketplace-products-v1
+    volumes:
+    - ./infrastructure/opensearch:/seed:ro
+    depends_on:
+      opensearch-init:
+        condition: service_completed_successfully
+      seed-postgres-demo:
+        condition: service_completed_successfully
+      media-seed:
+        condition: service_completed_successfully
+    restart: 'no'
+    networks:
+    - marketplace
+  seed-postgres-large:
+    image: postgres:17-alpine
+    profiles:
+    - seed-large
+    entrypoint:
+    - sh
+    - -c
+    - 'set -e
+
+      PGPASSWORD=catalog_password psql -h postgres -U catalog -d catalog_db -f /seed/catalog-large.sql
+
+      PGPASSWORD=pricing_password psql -h postgres -U pricing_app -d pricing_db -f /seed/pricing-large.sql
+
+      PGPASSWORD=promotion_password psql -h postgres -U promotion_app -d promotion_db -f /seed/promotion-large.sql
+
+      PGPASSWORD=inventory_password psql -h postgres -U inventory_app -d inventory_db -f /seed/inventory-large.sql
+
+      PGPASSWORD=media_password psql -h postgres -U media_user -d media_db -f /seed/media-large.sql
+
+      PGPASSWORD=operations_password psql -h postgres -U operations_user -d operations_db -f /seed/operations-large.sql
+
+      PGPASSWORD=audit_password psql -h postgres -U audit_app -d audit_db -f /seed/audit-large.sql
+
+      PGPASSWORD=authorization_password psql -h postgres -U authorization_app -d authorization_db -f /seed/authorization-large.sql
+
+      PGPASSWORD=payment_password psql -h postgres -U payment_app -d payment_db -f /seed/payment-large.sql
+
+      PGPASSWORD=checkout_password psql -h postgres -U checkout_app -d checkout_db -f /seed/checkout-large.sql
+
+      PGPASSWORD=return_password psql -h postgres -U return_user -d return_db -f /seed/return-large.sql
+
+      '
+    volumes:
+    - ./data/seed-large/postgresql:/seed:ro
+    depends_on:
+      be-catalog-api:
+        condition: service_healthy
+      be-inventory-api:
+        condition: service_healthy
+      be-pricing-api:
+        condition: service_healthy
+      be-audit-api:
+        condition: service_healthy
+      be-payment-api:
+        condition: service_healthy
+      be-checkout-api:
+        condition: service_healthy
+      be-return-api:
+        condition: service_healthy
+      be-operations-api:
+        condition: service_healthy
+      be-media-api:
+        condition: service_healthy
+    restart: 'no'
+    networks:
+    - marketplace
+  seed-mysql-large:
+    image: mysql:8.4
+    profiles:
+    - seed-large
+    environment:
+      MYSQL_PWD: root_password
+    entrypoint:
+    - sh
+    - -c
+    - 'set -e
+
+      mysql -h mysql -uroot -proot_password seller_db < /seed/seller-large.sql
+
+      mysql -h mysql -uroot -proot_password review_db < /seed/review-large.sql
+
+      mysql -h mysql -uroot -proot_password cart_db < /seed/cart-large.sql
+
+      '
+    volumes:
+    - ./data/seed-large/mysql:/seed:ro
+    depends_on:
+      be-seller-api:
+        condition: service_healthy
+      be-review-api:
+        condition: service_healthy
+    restart: 'no'
+    networks:
+    - marketplace
+  seed-sqlserver-large:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    profiles:
+    - seed-large
+    environment:
+      MSSQL_SA_PASSWORD: Marketplace!2026
+    entrypoint:
+    - /bin/bash
+    - -lc
+    - 'set -e
+
+      /opt/mssql-tools18/bin/sqlcmd -S sqlserver -U sa -P "$$MSSQL_SA_PASSWORD" -C -d order_db -i /seed/order-large.sql
+
+      /opt/mssql-tools18/bin/sqlcmd -S sqlserver -U sa -P "$$MSSQL_SA_PASSWORD" -C -d fulfillment_db -i /seed/fulfillment-large.sql
+
+      '
+    volumes:
+    - ./data/seed-large/sqlserver:/seed:ro
+    depends_on:
+      be-order-api:
+        condition: service_healthy
+    restart: 'no'
+    networks:
+    - marketplace
+  seed-oracle-large:
+    image: gvenzl/oracle-free:23-slim-faststart
+    profiles:
+    - seed-large
+    entrypoint:
+    - /bin/bash
+    - -lc
+    - echo exit | sqlplus -s marketplace/marketplace_password@oracle:1521/FREEPDB1 @/seed/settlement-large.sql
+    volumes:
+    - ./data/seed-large/oracle:/seed:ro
+    depends_on:
+      be-settlement-api:
+        condition: service_healthy
+    restart: 'no'
+    networks:
+    - marketplace
+  seed-mongo-large:
+    image: mongo:8.0
+    profiles:
+    - seed-large
+    entrypoint:
+    - bash
+    - -lc
+    - 'set -e
+
+      mongosh ''mongodb://mongo:27017/comment_db?replicaSet=rs0'' /seed/comment-large.js
+
+      mongosh ''mongodb://mongo:27017/notification_db?replicaSet=rs0'' /seed/notification-large.js
+
+      '
+    volumes:
+    - ./data/seed-large/mongodb:/seed:ro
+    depends_on:
+      mongo-init:
+        condition: service_completed_successfully
+      be-comment-api:
+        condition: service_healthy
+      be-notification-api:
+        condition: service_healthy
+    restart: 'no'
+    networks:
+    - marketplace
+  seed-opensearch-large:
+    image: curlimages/curl:8.12.1
+    profiles:
+    - seed-large
+    entrypoint:
+    - sh
+    - /seed/seed-large.sh
+    environment:
+      OPENSEARCH_URL: http://opensearch:9200
+      OPENSEARCH_PRODUCT_INDEX: marketplace-products-v1
+    volumes:
+    - ./infrastructure/opensearch:/seed:ro
+    depends_on:
+      opensearch-init:
+        condition: service_completed_successfully
+    restart: 'no'
+    networks:
+    - marketplace
+  storefront:
+    image: e-commerce-storefront:local
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.storefront
+    environment:
+      API_BASE_URL: http://localhost:8080
+      KEYCLOAK_PUBLIC_URL: http://localhost:8180
+      KEYCLOAK_CLIENT_ID: storefront
+    ports:
+    - 4200:80
+    depends_on:
+      be-gateway:
+        condition: service_healthy
+      seed-opensearch-demo:
+        condition: service_completed_successfully
+    networks:
+    - marketplace
+    pull_policy: build
+  admin:
+    image: e-commerce-admin:local
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.admin
+    environment:
+      API_BASE_URL: http://localhost:8080
+      KEYCLOAK_PUBLIC_URL: http://localhost:8180
+      KEYCLOAK_CLIENT_ID: admin-console
+    ports:
+    - 4201:80
+    depends_on:
+      be-gateway:
+        condition: service_healthy
+    networks:
+    - marketplace
+    pull_policy: build
+  lgtm:
+    image: grafana/otel-lgtm:0.29.2
+    ports:
+    - 3000:3000
+    - 9090:9090
+    - 3100:3100
+    - 3200:3200
+    - 4317:4317
+    - 4318:4318
+    - 4040:4040
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+      PROMETHEUS_EXTRA_ARGS: --storage.tsdb.retention.time=15d
+    volumes:
+    - ./infrastructure/lgtm/prometheus.yaml:/otel-lgtm/prometheus.yaml:ro
+    - ./infrastructure/prometheus/rules:/otel-lgtm/prometheus-rules:ro
+    - ./infrastructure/prometheus/targets:/otel-lgtm/prometheus-targets:ro
+    - ./infrastructure/grafana/provisioning/dashboards/dashboards.yml:/otel-lgtm/grafana/conf/provisioning/dashboards/marketplace.yml:ro
+    - ./infrastructure/grafana/dashboards:/otel-lgtm/grafana/dashboards/marketplace:ro
+    - lgtm-data:/data
+    networks:
+    - marketplace
+    profiles:
+    - observability
+  alertmanager:
+    image: prom/alertmanager:v0.32.1
+    command:
+    - --config.file=/etc/alertmanager/alertmanager.yml
+    ports:
+    - 9093:9093
+    volumes:
+    - ./infrastructure/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    networks:
+    - marketplace
+    profiles:
+    - observability
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:v1.9.0
+    command:
+    - --kafka.server=kafka:9092
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+    - marketplace
+    profiles:
+    - observability
+  kafka-jmx-exporter:
+    build:
+      context: ./infrastructure/kafka/jmx-exporter
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+    - marketplace
+    profiles:
+    - observability
+  postgres-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.19.1
+    environment:
+      DATA_SOURCE_URI: postgres:5432/postgres?sslmode=disable
+      DATA_SOURCE_USER: marketplace_admin
+      DATA_SOURCE_PASS: marketplace_admin_password
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+    - marketplace
+    profiles:
+    - observability
+  mysql-exporter:
+    image: prom/mysqld-exporter:v0.19.0
+    command:
+    - --config.my-cnf=/cfg/.my.cnf
+    volumes:
+    - ./infrastructure/mysql/exporter/.my.cnf:/cfg/.my.cnf:ro
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+    - marketplace
+    profiles:
+    - observability
+  mongodb-exporter:
+    image: percona/mongodb_exporter:0.51.0
+    command:
+    - --mongodb.uri=mongodb://mongo:27017/admin?replicaSet=rs0
+    - --collect-all
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+    - marketplace
+    profiles:
+    - full
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.84.0
+    environment:
+      REDIS_ADDR: redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+    - marketplace
+    profiles:
+    - observability
+  mssql-exporter:
+    image: awaragi/prometheus-mssql-exporter:v1.3.0
+    environment:
+      SERVER: sqlserver
+      PORT: '1433'
+      USERNAME: sa
+      PASSWORD: Marketplace!2026
+      ENCRYPT: 'true'
+      TRUST_SERVER_CERTIFICATE: 'true'
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    networks:
+    - marketplace
+    profiles:
+    - observability
+  oracle-exporter:
+    image: container-registry.oracle.com/database/observability-exporter:2.4.2
+    pull_policy: missing
+    command:
+      - --config.file=/config/config.yaml
+    volumes:
+      - ./infrastructure/oracle-exporter/config.yaml:/config/config.yaml:ro
+    depends_on:
+      oracle:
+        condition: service_healthy
+    networks:
+      - marketplace
+    profiles:
+      - full
+  opensearch-exporter:
+    image: quay.io/prometheuscommunity/elasticsearch-exporter:latest
+    command:
+    - --es.uri=http://opensearch:9200
+    - --es.all
+    - --es.indices
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    networks:
+    - marketplace
+    profiles:
+    - observability
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    privileged: true
+    devices:
+    - /dev/kmsg:/dev/kmsg
+    volumes:
+    - /:/rootfs:ro
+    - /var/run:/var/run:ro
+    - /sys:/sys:ro
+    - /var/lib/docker:/var/lib/docker:ro
+    networks:
+    - marketplace
+    profiles:
+    - observability
+  node-exporter:
+    image: prom/node-exporter:v1.11.1
+    command:
+    - --path.procfs=/host/proc
+    - --path.sysfs=/host/sys
+    - --path.rootfs=/rootfs
+    - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)
+    volumes:
+    - /proc:/host/proc:ro
+    - /sys:/host/sys:ro
+    - /:/rootfs:ro
+    networks:
+    - marketplace
+    profiles:
+    - observability
+  blackbox-exporter:
+    image: quay.io/prometheus/blackbox-exporter:v0.28.0
+    command:
+    - --config.file=/config/blackbox.yml
+    volumes:
+    - ./infrastructure/blackbox/blackbox.yml:/config/blackbox.yml:ro
+    networks:
+    - marketplace
+    profiles:
+    - observability
+volumes:
+  postgres-data: {}
+  mysql-data: {}
+  sqlserver-data: {}
+  oracle-data: {}
+  mongo-data: {}
+  redis-data: {}
+  kafka-data: {}
+  opensearch-data: {}
+  minio-data: {}
+  cloudbeaver-data: {}
+  lgtm-data: {}
+networks:
+  marketplace:
+    name: marketplace-network

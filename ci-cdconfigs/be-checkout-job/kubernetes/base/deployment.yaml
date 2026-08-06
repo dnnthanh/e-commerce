@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: be-checkout-job
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: be-checkout-job
+  template:
+    metadata:
+      labels:
+        app: be-checkout-job
+    spec:
+      containers:
+        - name: be-checkout-job
+          image: marketplace/be-checkout-job:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: be-checkout-job-config
+            - secretRef:
+                name: be-checkout-job-secret
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8080
+            initialDelaySeconds: 15
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            initialDelaySeconds: 30

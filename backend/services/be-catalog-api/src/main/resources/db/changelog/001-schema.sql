@@ -1,0 +1,7 @@
+-- Schema only. Performance indexes and partitions intentionally live in database-labs.
+CREATE TABLE category (id BIGSERIAL PRIMARY KEY, parent_id BIGINT NULL, name VARCHAR(255) NOT NULL, slug VARCHAR(255) NOT NULL UNIQUE, active BOOLEAN NOT NULL DEFAULT TRUE);
+CREATE TABLE product (id BIGSERIAL PRIMARY KEY, seller_id BIGINT NOT NULL, category_id BIGINT NOT NULL, name VARCHAR(255) NOT NULL, description TEXT NULL, status VARCHAR(32) NOT NULL, version BIGINT NOT NULL DEFAULT 0, created_at TIMESTAMP NOT NULL, updated_at TIMESTAMP NOT NULL);
+CREATE TABLE sku (id BIGSERIAL PRIMARY KEY, product_id BIGINT NOT NULL REFERENCES product(id), seller_sku VARCHAR(128) NOT NULL UNIQUE, variant_name VARCHAR(255) NOT NULL, active BOOLEAN NOT NULL DEFAULT TRUE);
+CREATE TABLE product_attribute_definition (id BIGSERIAL PRIMARY KEY, category_id BIGINT NOT NULL, code VARCHAR(128) NOT NULL, label VARCHAR(255) NOT NULL, data_type VARCHAR(32) NOT NULL, required BOOLEAN NOT NULL DEFAULT FALSE, UNIQUE(category_id, code));
+CREATE TABLE product_attribute_value (id BIGSERIAL PRIMARY KEY, product_id BIGINT NOT NULL REFERENCES product(id), attribute_definition_id BIGINT NOT NULL REFERENCES product_attribute_definition(id), value_json JSONB NOT NULL);
+CREATE TABLE outbox_event (id BIGSERIAL PRIMARY KEY, event_id VARCHAR(36) NOT NULL UNIQUE, aggregate_id VARCHAR(128) NOT NULL, event_type VARCHAR(128) NOT NULL, payload_json JSONB NOT NULL, status VARCHAR(32) NOT NULL, created_at TIMESTAMP NOT NULL, processed_at TIMESTAMP NULL);

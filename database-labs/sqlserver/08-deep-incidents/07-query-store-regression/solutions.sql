@@ -1,0 +1,7 @@
+-- Identify a proven good plan_id before forcing.
+-- EXEC sys.sp_query_store_force_plan @query_id=?, @plan_id=?;
+-- Keep a rollback command and monitor forced_plan_failure_count; forcing is mitigation, not a substitute for root-cause diagnosis.
+-- Evidence checklist:
+-- Capture the Actual Execution Plan plus SET STATISTICS IO,TIME ON output. Correlate with Query Store/DMVs and Extended Events when waits/deadlocks matter.
+-- Record actual-vs-estimated rows, logical reads, CPU/elapsed time, memory grant/spill warnings, wait category and plan_id.
+-- Re-run hot/tail parameters and representative concurrency; compare index update cost and tempdb/memory impact before rollout.

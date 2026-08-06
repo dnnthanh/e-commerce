@@ -1,0 +1,15 @@
+databaseChangeLog:
+  - changeSet:
+      id: 001-fulfillment-schema
+      author: feature013
+      changes:
+        - sqlFile:
+            path: db/changelog/001-schema.sql
+            relativeToChangelogFile: false
+  - changeSet:
+      id: 002-shipment-aggregate
+      author: feature013
+      changes:
+        - sqlFile:
+            path: db/changelog/002-shipment-aggregate.sql
+            relativeToChangelogFile: false

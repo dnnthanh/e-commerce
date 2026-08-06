@@ -1,0 +1,5 @@
+-- Replay 100 concurrent transactions with randomized input order vs sorted/canonical order. Count 1205 victims, lock wait time and rows/sec.
+-- Evidence checklist:
+-- Capture the Actual Execution Plan plus SET STATISTICS IO,TIME ON output. Correlate with Query Store/DMVs and Extended Events when waits/deadlocks matter.
+-- Record actual-vs-estimated rows, logical reads, CPU/elapsed time, memory grant/spill warnings, wait category and plan_id.
+-- Re-run hot/tail parameters and representative concurrency; compare index update cost and tempdb/memory impact before rollout.

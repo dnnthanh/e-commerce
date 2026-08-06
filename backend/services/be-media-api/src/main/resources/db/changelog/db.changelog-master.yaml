@@ -1,0 +1,31 @@
+databaseChangeLog:
+  - changeSet:
+      id: 001-media-schema
+      author: feature013
+      changes:
+        - sqlFile:
+            path: db/changelog/001-schema.sql
+            relativeToChangelogFile: false
+  - changeSet:
+      id: 002-media-processing
+      author: feature013
+      changes:
+        - sqlFile:
+            path: db/changelog/002-media-processing.sql
+            relativeToChangelogFile: false
+
+  - changeSet:
+      id: 003-media-processing-variant-default
+      author: feature013
+      changes:
+        - sqlFile:
+            path: db/changelog/003-media-processing-variant-default.sql
+            relativeToChangelogFile: false
+
+  - changeSet:
+      id: 004-media-metadata-version
+      author: feature013
+      changes:
+        - sqlFile:
+            path: db/changelog/004-media-metadata-version.sql
+            relativeToChangelogFile: false

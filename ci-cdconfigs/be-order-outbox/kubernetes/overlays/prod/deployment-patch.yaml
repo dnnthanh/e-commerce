@@ -1,0 +1,6 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: be-order-outbox
+spec:
+  replicas: 3

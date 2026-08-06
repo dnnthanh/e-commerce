@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: be-catalog-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: be-catalog-api
+  template:
+    metadata:
+      labels:
+        app: be-catalog-api
+    spec:
+      containers:
+        - name: be-catalog-api
+          image: marketplace/be-catalog-api:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: be-catalog-api-config
+            - secretRef:
+                name: be-catalog-api-secret
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8080
+            initialDelaySeconds: 15
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            initialDelaySeconds: 30

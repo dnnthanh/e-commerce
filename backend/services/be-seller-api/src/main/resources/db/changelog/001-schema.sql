@@ -1,0 +1,5 @@
+-- Schema only. Performance indexes and partitions intentionally live in database-labs.
+CREATE TABLE seller (id BIGINT PRIMARY KEY AUTO_INCREMENT, code VARCHAR(64) NOT NULL UNIQUE, display_name VARCHAR(255) NOT NULL, status VARCHAR(32) NOT NULL, created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL);
+CREATE TABLE shop (id BIGINT PRIMARY KEY AUTO_INCREMENT, seller_id BIGINT NOT NULL, slug VARCHAR(128) NOT NULL UNIQUE, name VARCHAR(255) NOT NULL, description TEXT NULL, status VARCHAR(32) NOT NULL, updated_at DATETIME NOT NULL, CONSTRAINT fk_shop_seller FOREIGN KEY (seller_id) REFERENCES seller(id));
+CREATE TABLE seller_profile_history (id BIGINT PRIMARY KEY AUTO_INCREMENT, seller_id BIGINT NOT NULL, changed_by VARCHAR(64) NOT NULL, before_json JSON NULL, after_json JSON NOT NULL, changed_at DATETIME NOT NULL);
+CREATE TABLE outbox_event (id BIGINT PRIMARY KEY AUTO_INCREMENT, event_id VARCHAR(36) NOT NULL UNIQUE, aggregate_id VARCHAR(128) NOT NULL, event_type VARCHAR(128) NOT NULL, payload_json JSON NOT NULL, status VARCHAR(32) NOT NULL, created_at DATETIME NOT NULL, processed_at DATETIME NULL);

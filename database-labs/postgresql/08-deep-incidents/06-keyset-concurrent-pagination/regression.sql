@@ -1,0 +1,6 @@
+-- Store ids from 50 consecutive pages while inserts run. Assert no duplicate ids and monotonically descending (created_at,id).
+-- Compare buffers and latency for offsets 0/10k/100k/500k vs keyset pages.
+-- Evidence checklist:
+-- 1) save EXPLAIN (ANALYZE,BUFFERS,WAL,SETTINGS) output; 2) compare hot/tail parameters;
+-- 3) query pg_stat_activity/pg_locks during concurrency; 4) record relation/index size and pg_stat_user_indexes usage;
+-- 5) repeat after ANALYZE and under expected concurrent sessions. Do not accept a latency win without write/storage measurements.

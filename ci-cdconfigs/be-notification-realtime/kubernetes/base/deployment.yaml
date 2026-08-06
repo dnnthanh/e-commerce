@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: be-notification-realtime
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: be-notification-realtime
+  template:
+    metadata:
+      labels:
+        app: be-notification-realtime
+    spec:
+      containers:
+        - name: be-notification-realtime
+          image: marketplace/be-notification-realtime:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: be-notification-realtime-config
+            - secretRef:
+                name: be-notification-realtime-secret
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8080
+            initialDelaySeconds: 15
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            initialDelaySeconds: 30

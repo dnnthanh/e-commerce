@@ -1,0 +1,824 @@
+{
+  "realm": "marketplace",
+  "enabled": true,
+  "registrationAllowed": false,
+  "roles": {
+    "realm": [
+      {
+        "name": "PRODUCT_VIEW"
+      },
+      {
+        "name": "PRODUCT_CREATE"
+      },
+      {
+        "name": "PRODUCT_UPDATE"
+      },
+      {
+        "name": "PRODUCT_PUBLISH"
+      },
+      {
+        "name": "SELLER_VIEW"
+      },
+      {
+        "name": "SELLER_UPDATE"
+      },
+      {
+        "name": "INVENTORY_VIEW"
+      },
+      {
+        "name": "INVENTORY_UPDATE"
+      },
+      {
+        "name": "CART_VIEW"
+      },
+      {
+        "name": "CHECKOUT_VIEW"
+      },
+      {
+        "name": "ORDER_VIEW"
+      },
+      {
+        "name": "ORDER_CANCEL"
+      },
+      {
+        "name": "PAYMENT_VIEW"
+      },
+      {
+        "name": "PAYMENT_REFUND"
+      },
+      {
+        "name": "FULFILLMENT_VIEW"
+      },
+      {
+        "name": "SETTLEMENT_VIEW"
+      },
+      {
+        "name": "COMMENT_VIEW"
+      },
+      {
+        "name": "COMMENT_CREATE"
+      },
+      {
+        "name": "REVIEW_VIEW"
+      },
+      {
+        "name": "REVIEW_CREATE"
+      },
+      {
+        "name": "NOTIFICATION_VIEW"
+      },
+      {
+        "name": "RETURN_VIEW"
+      },
+      {
+        "name": "RETURN_CREATE"
+      },
+      {
+        "name": "AUDIT_VIEW"
+      },
+      {
+        "name": "OPERATIONS_VIEW"
+      },
+      {
+        "name": "OPERATIONS_RECOVER"
+      },
+      {
+        "name": "SECURITY_VIEW"
+      },
+      {
+        "name": "SECURITY_MANAGE"
+      },
+      {
+        "name": "PRICING_VIEW"
+      },
+      {
+        "name": "PRICING_UPDATE"
+      },
+      {
+        "name": "PROMOTION_VIEW"
+      },
+      {
+        "name": "PROMOTION_UPDATE"
+      },
+      {
+        "name": "MEDIA_VIEW"
+      },
+      {
+        "name": "MEDIA_UPLOAD"
+      },
+      {
+        "name": "PLATFORM_VIEW"
+      },
+      {
+        "name": "CUSTOMER",
+        "composite": true,
+        "composites": {
+          "realm": [
+            "PRODUCT_VIEW",
+            "SELLER_VIEW",
+            "CART_VIEW",
+            "CHECKOUT_VIEW",
+            "ORDER_VIEW",
+            "PAYMENT_VIEW",
+            "COMMENT_VIEW",
+            "COMMENT_CREATE",
+            "REVIEW_VIEW",
+            "REVIEW_CREATE",
+            "NOTIFICATION_VIEW",
+            "RETURN_VIEW",
+            "RETURN_CREATE"
+          ]
+        }
+      },
+      {
+        "name": "SELLER_MANAGER",
+        "composite": true,
+        "composites": {
+          "realm": [
+            "PRODUCT_VIEW",
+            "PRODUCT_CREATE",
+            "PRODUCT_UPDATE",
+            "PRODUCT_PUBLISH",
+            "SELLER_VIEW",
+            "SELLER_UPDATE",
+            "INVENTORY_VIEW",
+            "INVENTORY_UPDATE",
+            "ORDER_VIEW",
+            "FULFILLMENT_VIEW",
+            "SETTLEMENT_VIEW",
+            "COMMENT_VIEW",
+            "COMMENT_CREATE",
+            "PRICING_VIEW",
+            "PROMOTION_VIEW",
+            "MEDIA_VIEW",
+            "MEDIA_UPLOAD"
+          ]
+        }
+      },
+      {
+        "name": "PLATFORM_ADMIN",
+        "composite": true,
+        "composites": {
+          "realm": [
+            "SECURITY_VIEW",
+            "SECURITY_MANAGE",
+            "AUDIT_VIEW",
+            "OPERATIONS_VIEW",
+            "OPERATIONS_RECOVER",
+            "PRODUCT_VIEW",
+            "PRODUCT_UPDATE",
+            "ORDER_VIEW",
+            "PAYMENT_VIEW",
+            "PAYMENT_REFUND",
+            "RETURN_VIEW",
+            "SETTLEMENT_VIEW",
+            "RETURN_RECEIVE",
+            "SETTLEMENT_APPROVE"
+          ]
+        }
+      },
+      {
+        "name": "SERVICE_ACCOUNT"
+      },
+      {
+        "name": "RETURN_RECEIVE",
+        "description": "Receive and inspect returned items at warehouse"
+      },
+      {
+        "name": "SETTLEMENT_APPROVE",
+        "description": "Approve seller settlements for payout"
+      },
+      {
+        "name": "WAREHOUSE_OPERATOR",
+        "description": "Warehouse inventory and return receiving role",
+        "composite": true,
+        "composites": {
+          "realm": [
+            "INVENTORY_VIEW",
+            "INVENTORY_UPDATE",
+            "RETURN_VIEW",
+            "RETURN_RECEIVE",
+            "FULFILLMENT_VIEW"
+          ]
+        }
+      },
+      {
+        "name": "FINANCE_OPERATOR",
+        "description": "Finance payment/refund/settlement role",
+        "composite": true,
+        "composites": {
+          "realm": [
+            "PAYMENT_VIEW",
+            "PAYMENT_REFUND",
+            "SETTLEMENT_VIEW",
+            "SETTLEMENT_APPROVE"
+          ]
+        }
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "storefront",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "redirectUris": [
+        "http://localhost:4200/*"
+      ],
+      "webOrigins": [
+        "http://localhost:4200"
+      ],
+      "defaultClientScopes": [
+        "web-origins",
+        "acr",
+        "profile",
+        "email"
+      ]
+    },
+    {
+      "clientId": "admin-console",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "redirectUris": [
+        "http://localhost:4201/*"
+      ],
+      "webOrigins": [
+        "http://localhost:4201"
+      ],
+      "defaultClientScopes": [
+        "web-origins",
+        "acr",
+        "profile",
+        "email"
+      ]
+    },
+    {
+      "clientId": "marketplace-internal",
+      "secret": "local-internal-secret",
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false
+    },
+    {
+      "clientId": "authorization-admin",
+      "secret": "authorization-admin-secret",
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false
+    }
+  ],
+  "groups": [
+    {
+      "name": "sellers",
+      "attributes": {
+        "type": [
+          "SELLER_ROOT"
+        ]
+      },
+      "subGroups": [
+        {
+          "name": "seller-10001",
+          "attributes": {
+            "type": [
+              "SELLER"
+            ],
+            "sellerId": [
+              "10001"
+            ]
+          },
+          "subGroups": [
+            {
+              "name": "shops",
+              "attributes": {
+                "type": [
+                  "SHOP_CONTAINER"
+                ],
+                "sellerId": [
+                  "10001"
+                ]
+              },
+              "subGroups": [
+                {
+                  "name": "shop-11001",
+                  "attributes": {
+                    "type": [
+                      "SHOP"
+                    ],
+                    "sellerId": [
+                      "10001"
+                    ],
+                    "shopId": [
+                      "11001"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "seller-10002",
+          "attributes": {
+            "type": [
+              "SELLER"
+            ],
+            "sellerId": [
+              "10002"
+            ]
+          },
+          "subGroups": [
+            {
+              "name": "shops",
+              "attributes": {
+                "type": [
+                  "SHOP_CONTAINER"
+                ],
+                "sellerId": [
+                  "10002"
+                ]
+              },
+              "subGroups": [
+                {
+                  "name": "shop-11002",
+                  "attributes": {
+                    "type": [
+                      "SHOP"
+                    ],
+                    "sellerId": [
+                      "10002"
+                    ],
+                    "shopId": [
+                      "11002"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "seller-10003",
+          "attributes": {
+            "type": [
+              "SELLER"
+            ],
+            "sellerId": [
+              "10003"
+            ]
+          },
+          "subGroups": [
+            {
+              "name": "shops",
+              "attributes": {
+                "type": [
+                  "SHOP_CONTAINER"
+                ],
+                "sellerId": [
+                  "10003"
+                ]
+              },
+              "subGroups": [
+                {
+                  "name": "shop-11003",
+                  "attributes": {
+                    "type": [
+                      "SHOP"
+                    ],
+                    "sellerId": [
+                      "10003"
+                    ],
+                    "shopId": [
+                      "11003"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "seller-10004",
+          "attributes": {
+            "type": [
+              "SELLER"
+            ],
+            "sellerId": [
+              "10004"
+            ]
+          },
+          "subGroups": [
+            {
+              "name": "shops",
+              "attributes": {
+                "type": [
+                  "SHOP_CONTAINER"
+                ],
+                "sellerId": [
+                  "10004"
+                ]
+              },
+              "subGroups": [
+                {
+                  "name": "shop-11004",
+                  "attributes": {
+                    "type": [
+                      "SHOP"
+                    ],
+                    "sellerId": [
+                      "10004"
+                    ],
+                    "shopId": [
+                      "11004"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "seller-10005",
+          "attributes": {
+            "type": [
+              "SELLER"
+            ],
+            "sellerId": [
+              "10005"
+            ]
+          },
+          "subGroups": [
+            {
+              "name": "shops",
+              "attributes": {
+                "type": [
+                  "SHOP_CONTAINER"
+                ],
+                "sellerId": [
+                  "10005"
+                ]
+              },
+              "subGroups": [
+                {
+                  "name": "shop-11005",
+                  "attributes": {
+                    "type": [
+                      "SHOP"
+                    ],
+                    "sellerId": [
+                      "10005"
+                    ],
+                    "shopId": [
+                      "11005"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "seller-10006",
+          "attributes": {
+            "type": [
+              "SELLER"
+            ],
+            "sellerId": [
+              "10006"
+            ]
+          },
+          "subGroups": [
+            {
+              "name": "shops",
+              "attributes": {
+                "type": [
+                  "SHOP_CONTAINER"
+                ],
+                "sellerId": [
+                  "10006"
+                ]
+              },
+              "subGroups": [
+                {
+                  "name": "shop-11006",
+                  "attributes": {
+                    "type": [
+                      "SHOP"
+                    ],
+                    "sellerId": [
+                      "10006"
+                    ],
+                    "shopId": [
+                      "11006"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "seller-10007",
+          "attributes": {
+            "type": [
+              "SELLER"
+            ],
+            "sellerId": [
+              "10007"
+            ]
+          },
+          "subGroups": [
+            {
+              "name": "shops",
+              "attributes": {
+                "type": [
+                  "SHOP_CONTAINER"
+                ],
+                "sellerId": [
+                  "10007"
+                ]
+              },
+              "subGroups": [
+                {
+                  "name": "shop-11007",
+                  "attributes": {
+                    "type": [
+                      "SHOP"
+                    ],
+                    "sellerId": [
+                      "10007"
+                    ],
+                    "shopId": [
+                      "11007"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "seller-10008",
+          "attributes": {
+            "type": [
+              "SELLER"
+            ],
+            "sellerId": [
+              "10008"
+            ]
+          },
+          "subGroups": [
+            {
+              "name": "shops",
+              "attributes": {
+                "type": [
+                  "SHOP_CONTAINER"
+                ],
+                "sellerId": [
+                  "10008"
+                ]
+              },
+              "subGroups": [
+                {
+                  "name": "shop-11008",
+                  "attributes": {
+                    "type": [
+                      "SHOP"
+                    ],
+                    "sellerId": [
+                      "10008"
+                    ],
+                    "shopId": [
+                      "11008"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "seller-10009",
+          "attributes": {
+            "type": [
+              "SELLER"
+            ],
+            "sellerId": [
+              "10009"
+            ]
+          },
+          "subGroups": [
+            {
+              "name": "shops",
+              "attributes": {
+                "type": [
+                  "SHOP_CONTAINER"
+                ],
+                "sellerId": [
+                  "10009"
+                ]
+              },
+              "subGroups": [
+                {
+                  "name": "shop-11009",
+                  "attributes": {
+                    "type": [
+                      "SHOP"
+                    ],
+                    "sellerId": [
+                      "10009"
+                    ],
+                    "shopId": [
+                      "11009"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "seller-10010",
+          "attributes": {
+            "type": [
+              "SELLER"
+            ],
+            "sellerId": [
+              "10010"
+            ]
+          },
+          "subGroups": [
+            {
+              "name": "shops",
+              "attributes": {
+                "type": [
+                  "SHOP_CONTAINER"
+                ],
+                "sellerId": [
+                  "10010"
+                ]
+              },
+              "subGroups": [
+                {
+                  "name": "shop-11010",
+                  "attributes": {
+                    "type": [
+                      "SHOP"
+                    ],
+                    "sellerId": [
+                      "10010"
+                    ],
+                    "shopId": [
+                      "11010"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "seller-10011",
+          "attributes": {
+            "type": [
+              "SELLER"
+            ],
+            "sellerId": [
+              "10011"
+            ]
+          },
+          "subGroups": [
+            {
+              "name": "shops",
+              "attributes": {
+                "type": [
+                  "SHOP_CONTAINER"
+                ],
+                "sellerId": [
+                  "10011"
+                ]
+              },
+              "subGroups": [
+                {
+                  "name": "shop-11011",
+                  "attributes": {
+                    "type": [
+                      "SHOP"
+                    ],
+                    "sellerId": [
+                      "10011"
+                    ],
+                    "shopId": [
+                      "11011"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "seller-10012",
+          "attributes": {
+            "type": [
+              "SELLER"
+            ],
+            "sellerId": [
+              "10012"
+            ]
+          },
+          "subGroups": [
+            {
+              "name": "shops",
+              "attributes": {
+                "type": [
+                  "SHOP_CONTAINER"
+                ],
+                "sellerId": [
+                  "10012"
+                ]
+              },
+              "subGroups": [
+                {
+                  "name": "shop-11012",
+                  "attributes": {
+                    "type": [
+                      "SHOP"
+                    ],
+                    "sellerId": [
+                      "10012"
+                    ],
+                    "shopId": [
+                      "11012"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "customer.demo",
+      "enabled": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Customer@123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "CUSTOMER"
+      ]
+    },
+    {
+      "username": "seller.demo",
+      "enabled": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Seller@123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "SELLER_MANAGER"
+      ],
+      "groups": [
+        "/sellers/seller-10001"
+      ]
+    },
+    {
+      "username": "admin.demo",
+      "enabled": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Admin@123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "PLATFORM_ADMIN"
+      ]
+    },
+    {
+      "username": "seller.shop.demo",
+      "enabled": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Seller@123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "SELLER_MANAGER"
+      ],
+      "groups": [
+        "/sellers/seller-10001/shops/shop-11001"
+      ]
+    }
+  ]
+}

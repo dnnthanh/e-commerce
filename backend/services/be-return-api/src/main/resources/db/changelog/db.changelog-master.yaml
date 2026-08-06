@@ -1,0 +1,44 @@
+databaseChangeLog:
+  - changeSet:
+      id: 001-schema
+      author: marketplace
+      context: schema
+      changes:
+        - sqlFile:
+            path: 001-schema.sql
+            relativeToChangelogFile: true
+            splitStatements: true
+            stripComments: true
+
+  - changeSet:
+      id: 002-return-version
+      author: marketplace
+      context: schema
+      changes:
+        - sqlFile:
+            path: 002-return-version.sql
+            relativeToChangelogFile: true
+            splitStatements: true
+            stripComments: true
+
+  - changeSet:
+      id: 003-return-inspection
+      author: feature013
+      context: schema
+      changes:
+        - sqlFile:
+            path: 003-return-inspection.sql
+            relativeToChangelogFile: true
+            splitStatements: true
+            stripComments: true
+
+  - changeSet:
+      id: 004-return-canonical-inspection
+      author: feature013-final
+      context: schema
+      changes:
+        - sqlFile:
+            path: 004-return-canonical-inspection.sql
+            relativeToChangelogFile: true
+            splitStatements: true
+            stripComments: true

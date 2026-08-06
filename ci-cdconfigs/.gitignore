@@ -1,0 +1,7 @@
+# Never commit resolved environment or secret files.
+**/*.env
+!**/*.env.example
+**/secret.yaml
+!**/secret.example.yaml
+**/secrets.env
+!**/secrets.env.example

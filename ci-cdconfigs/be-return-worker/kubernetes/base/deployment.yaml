@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: be-return-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: be-return-worker
+  template:
+    metadata:
+      labels:
+        app: be-return-worker
+    spec:
+      containers:
+        - name: be-return-worker
+          image: marketplace/be-return-worker:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: be-return-worker-config
+            - secretRef:
+                name: be-return-worker-secret
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8080
+            initialDelaySeconds: 15
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            initialDelaySeconds: 30

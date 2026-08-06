@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: be-authorization-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: be-authorization-api
+  template:
+    metadata:
+      labels:
+        app: be-authorization-api
+    spec:
+      containers:
+        - name: be-authorization-api
+          image: marketplace/be-authorization-api:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: be-authorization-api-config
+            - secretRef:
+                name: be-authorization-api-secret
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8080
+            initialDelaySeconds: 15
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            initialDelaySeconds: 30

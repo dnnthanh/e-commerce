@@ -1,0 +1,10 @@
+log:
+  level: info
+  format: json
+web:
+  listenAddress: 0.0.0.0:9161
+databases:
+  - name: marketplace-oracle
+    url: oracle://marketplace:marketplace_password@oracle:1521/FREEPDB1
+metrics:
+  scrapeInterval: 15s

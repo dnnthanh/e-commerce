@@ -1,0 +1,15 @@
+databaseChangeLog:
+  - changeSet:
+      id: 001-checkout-schema
+      author: feature013
+      changes:
+        - sqlFile:
+            path: db/changelog/001-schema.sql
+            relativeToChangelogFile: false
+  - changeSet:
+      id: 002-checkout-process
+      author: feature013
+      changes:
+        - sqlFile:
+            path: db/changelog/002-checkout-process.sql
+            relativeToChangelogFile: false

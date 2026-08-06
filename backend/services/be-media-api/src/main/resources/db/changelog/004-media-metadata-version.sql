@@ -1,0 +1,2 @@
+ALTER TABLE media_asset
+  ADD COLUMN row_version BIGINT NOT NULL DEFAULT 0;

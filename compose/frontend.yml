@@ -1,0 +1,41 @@
+name: e-commerce-marketplace
+services:
+  storefront:
+    image: e-commerce-storefront:local
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.storefront
+    environment:
+      API_BASE_URL: http://localhost:8080
+      KEYCLOAK_PUBLIC_URL: http://localhost:8180
+      KEYCLOAK_CLIENT_ID: storefront
+    ports:
+    - 4200:80
+    depends_on:
+      be-gateway:
+        condition: service_healthy
+      seed-opensearch-demo:
+        condition: service_completed_successfully
+    networks:
+    - marketplace
+    pull_policy: build
+  admin:
+    image: e-commerce-admin:local
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.admin
+    environment:
+      API_BASE_URL: http://localhost:8080
+      KEYCLOAK_PUBLIC_URL: http://localhost:8180
+      KEYCLOAK_CLIENT_ID: admin-console
+    ports:
+    - 4201:80
+    depends_on:
+      be-gateway:
+        condition: service_healthy
+    networks:
+    - marketplace
+    pull_policy: build
+networks:
+  marketplace:
+    name: marketplace-network

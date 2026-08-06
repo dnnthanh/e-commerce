@@ -1,0 +1,16 @@
+CREATE DATABASE IF NOT EXISTS seller_db CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+CREATE USER IF NOT EXISTS 'seller'@'%' IDENTIFIED BY 'seller_password';
+GRANT ALL PRIVILEGES ON seller_db.* TO 'seller'@'%';
+
+CREATE DATABASE IF NOT EXISTS cart_db CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+CREATE USER IF NOT EXISTS 'marketplace'@'%' IDENTIFIED BY 'marketplace_password';
+GRANT ALL PRIVILEGES ON cart_db.* TO 'marketplace'@'%';
+
+CREATE DATABASE IF NOT EXISTS review_db CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+CREATE USER IF NOT EXISTS 'review_user'@'%' IDENTIFIED BY 'review_password';
+GRANT ALL PRIVILEGES ON review_db.* TO 'review_user'@'%';
+FLUSH PRIVILEGES;
+
+CREATE USER IF NOT EXISTS 'exporter'@'%' IDENTIFIED BY 'exporter_password' WITH MAX_USER_CONNECTIONS 3;
+GRANT PROCESS, REPLICATION CLIENT, SELECT ON *.* TO 'exporter'@'%';
+FLUSH PRIVILEGES;
