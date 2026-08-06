@@ -10,14 +10,14 @@ export default defineConfig({
     ['html', { outputFolder: 'playwright-report', open: 'never' }],
   ],
   use: {
-    baseURL: 'http://127.0.0.1:4200',
+    baseURL: 'http://localhost:4200',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
   },
   webServer: {
     command: 'npm run start:storefront',
-    url: 'http://127.0.0.1:4200',
+    url: 'http://localhost:4200',
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
   },
