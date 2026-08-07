@@ -5,8 +5,31 @@ SOURCE_MANIFEST="${1:?source manifest is required}"
 TARGET_MANIFEST="${2:?target manifest is required}"
 : "${MEDIA_SEED_PRODUCT_ID_OFFSET:=1000}"
 
-TEMP_MANIFEST="${TARGET_MANIFEST}.tmp"
-: > "$TEMP_MANIFEST"
+: > "$TARGET_MANIFEST"
+seen=''
+count=0
+
+append_unique() {
+  normalized_path="$1"
+  case "
+$seen
+" in
+    *"
+$normalized_path
+"*)
+      return 0
+      ;;
+  esac
+
+  printf '%s\n' "$normalized_path" >> "$TARGET_MANIFEST"
+  if [ -n "$seen" ]; then
+    seen="$seen
+$normalized_path"
+  else
+    seen="$normalized_path"
+  fi
+  count=$((count + 1))
+}
 
 while IFS= read -r relative_path; do
   [ -n "$relative_path" ] || continue
@@ -19,7 +42,10 @@ while IFS= read -r relative_path; do
 
       case "$manifest_id" in
         0*)
-          numeric_id="$(printf '%s' "$manifest_id" | sed 's/^0*//')"
+          numeric_id="$manifest_id"
+          while [ "${numeric_id#0}" != "$numeric_id" ]; do
+            numeric_id="${numeric_id#0}"
+          done
           [ -n "$numeric_id" ] || numeric_id=0
           product_id=$((numeric_id + MEDIA_SEED_PRODUCT_ID_OFFSET))
           ;;
@@ -28,17 +54,14 @@ while IFS= read -r relative_path; do
           ;;
       esac
 
-      printf 'products/%s/%s\n' "$product_id" "$variant_path" >> "$TEMP_MANIFEST"
+      append_unique "products/$product_id/$variant_path"
       ;;
     *)
-      printf '%s\n' "$relative_path" >> "$TEMP_MANIFEST"
+      append_unique "$relative_path"
       ;;
   esac
 done < "$SOURCE_MANIFEST"
 
-sort -u "$TEMP_MANIFEST" > "$TARGET_MANIFEST"
-rm -f "$TEMP_MANIFEST"
-
 printf 'MEDIA_SEED_MANIFEST_NORMALIZED count=%s offset=%s\n' \
-  "$(wc -l < "$TARGET_MANIFEST" | tr -d ' ')" \
+  "$count" \
   "$MEDIA_SEED_PRODUCT_ID_OFFSET"
