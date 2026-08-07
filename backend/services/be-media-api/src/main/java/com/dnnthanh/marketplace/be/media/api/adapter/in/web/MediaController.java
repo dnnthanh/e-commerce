@@ -31,8 +31,10 @@ public class MediaController implements MediaApi {
     @Override
     public List<VariantView> productAssets(Long productId) {
         return useCase.variants(productId).stream()
-                .map(result ->
-                        mapper.toResponse(result, publicMediaUrlResolver.resolve(result.objectKey())))
+                .map(
+                        result ->
+                                mapper.toResponse(
+                                        result, publicMediaUrlResolver.resolve(result.objectKey())))
                 .toList();
     }
 
