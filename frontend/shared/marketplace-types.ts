@@ -162,45 +162,124 @@ export interface NotificationView {
   id: string;
   type: string;
   title: string;
-  body?: string;
-  read: boolean;
+  message: string;
+  payload: Record<string, unknown>;
+  readAt?: IsoDateTime;
   createdAt: IsoDateTime;
 }
 
 export interface NotificationPreference {
+  realtime: boolean;
   email: boolean;
   push: boolean;
-  inApp: boolean;
+  sellerUpdates: boolean;
 }
 
-export interface SearchItem {
-  productId: number;
+export interface BalanceView {
+  skuId: number;
+  warehouseId: number;
+  onHand: number;
+  reserved: number;
+  available: number;
+  version: number;
+}
+
+export interface PaymentView {
+  paymentKey: string;
+  orderId: string;
+  userId: string;
+  provider: string;
+  amount: Money;
+  status: string;
+  updatedAt: IsoDateTime;
+}
+
+export interface SettlementView {
+  settlementNo: string;
   sellerId: number;
-  name: string;
-  price?: Money;
-  rating?: number;
+  gross: Money;
+  commission: Money;
+  payable: Money;
+  status: string;
 }
 
-export interface SearchResponse {
-  items: SearchItem[];
-  facets: Record<string, Record<string, number>>;
-  total: number;
+export interface IncidentView {
+  id: number;
+  type: string;
+  sourceService: string;
+  recoveryTarget: string;
+  aggregateId: string;
+  status: string;
+  severity: string;
+  lastError?: string;
+  firstSeenAt: IsoDateTime;
 }
 
-export interface UploadDraft {
-  productId: number;
-  sellerId: number;
-  fileName: string;
-  contentType: string;
-  size: number;
-  sha256: string;
+export interface AuditView {
+  eventId: string;
+  actorId: string;
+  actorType: string;
+  action: string;
+  resourceType: string;
+  resourceId: string;
+  sourceService: string;
+  traceId: string;
+  occurredAt: IsoDateTime;
+}
+
+export interface AuthorizationSnapshot {
+  roles: string[];
+  permissions: string[];
+  sellerIds: number[];
 }
 
 export interface UploadSession {
   assetId: number;
-  uploadUrl: string;
   objectKey: string;
+  uploadUrl: string;
   expiresAt: IsoDateTime;
+}
+
+export interface PromotionResult {
+  subtotal: Money;
+  totalDiscount: Money;
+  payable: Money;
+  applied: Array<{
+    code?: string;
+    promotionId?: number;
+    discount?: Money;
+    [key: string]: unknown;
+  }>;
+}
+
+export interface SearchHit {
+  productId: number;
+  sellerId?: number;
+  name: string;
+  price?: Money;
+  rating?: number;
+  [key: string]: unknown;
+}
+
+export interface SearchResponse {
+  items: SearchHit[];
+  facets?: Record<string, Record<string, number>>;
+  total?: number;
+  nextCursor?: string;
+}
+
+export interface CheckoutItemRequest {
+  sellerId: number;
+  skuId: number;
+  warehouseId: number;
+  quantity: number;
+}
+
+export interface CreateReturnRequest {
+  requestKey: string;
+  orderNo: string;
+  orderLineIds: number[];
+  reason: string;
 }
 
 export interface ProductDraft {
@@ -210,59 +289,10 @@ export interface ProductDraft {
   description?: string;
 }
 
-export interface PromotionResult {
-  code: string;
-  discountAmount: Money;
-  description?: string;
-}
-
-export interface PaymentView {
-  paymentId: string;
-  orderNo: string;
-  status: string;
-  amount: Money;
-}
-
-export interface BalanceView {
-  accountId: string;
-  available: Money;
-  pending: Money;
-  currency: string;
-}
-
-export interface SettlementView {
-  settlementId: string;
+export interface UploadDraft {
+  productId: number;
   sellerId: number;
-  amount: Money;
-  status: string;
-  createdAt: IsoDateTime;
-}
-
-export interface IncidentView {
-  id: string;
-  type: string;
-  status: string;
-  details?: string;
-  createdAt: IsoDateTime;
-}
-
-export interface AuditView {
-  id: string;
-  action: string;
-  actorId?: string;
-  resourceType?: string;
-  resourceId?: string;
-  createdAt: IsoDateTime;
-}
-
-export interface AuthorizationSnapshot {
-  roles: string[];
-  permissions: string[];
-  sellerIds: number[];
-}
-
-export interface CreateReturnRequest {
-  orderId: string;
-  orderLineIds: string[];
-  reason: string;
+  contentType: string;
+  filename: string;
+  checksum: string;
 }
