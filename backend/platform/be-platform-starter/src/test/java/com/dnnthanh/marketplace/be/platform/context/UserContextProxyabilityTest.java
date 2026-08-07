@@ -13,7 +13,8 @@ class UserContextProxyabilityTest {
     @Test
     void userContextCanBeClassProxiedBySpring() {
         ProxyFactory proxyFactory = new ProxyFactory();
-        proxyFactory.setTarget(new UserContext("user-1", "alice", UserContext.ActorType.USER, Set.of("BUYER")));
+        proxyFactory.setTarget(
+                new UserContext("user-1", "alice", UserContext.ActorType.USER, Set.of("BUYER")));
         proxyFactory.setProxyTargetClass(true);
 
         Object proxy = proxyFactory.getProxy();
