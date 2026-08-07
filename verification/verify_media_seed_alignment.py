@@ -12,6 +12,11 @@ MEDIA_SQL = ROOT / "data/seed-demo/postgresql/media.sql"
 PRODUCT_ID_OFFSET = 1000
 
 
+def normalize_product_id(raw_product_id: str) -> int:
+    product_id = int(raw_product_id)
+    return product_id + PRODUCT_ID_OFFSET if raw_product_id.startswith("0") else product_id
+
+
 def normalized_object_keys() -> set[str]:
     keys: set[str] = set()
     pattern = re.compile(r"^products/(\d{4})/(.+)$")
@@ -23,7 +28,7 @@ def normalized_object_keys() -> set[str]:
         if not match:
             keys.add(f"seed/{relative_path}")
             continue
-        product_id = int(match.group(1)) + PRODUCT_ID_OFFSET
+        product_id = normalize_product_id(match.group(1))
         keys.add(f"seed/products/{product_id}/{match.group(2)}")
     return keys
 
@@ -59,9 +64,10 @@ def main() -> None:
     if absent:
         raise SystemExit("MEDIA_SEED_REQUIRED_OBJECTS_MISSING\n  " + "\n  ".join(absent))
 
+    products = {key.split("/")[2] for key in generated}
     print(
         "MEDIA_SEED_ALIGNMENT_OK "
-        f"generated={len(generated)} database={len(database)} products={len({key.split('/')[2] for key in generated})}"
+        f"generated={len(generated)} database={len(database)} products={len(products)}"
     )
 
 
