@@ -7,9 +7,9 @@ import java.util.Set;
 /**
  * Immutable execution identity exposed to application code instead of Spring Security primitives.
  *
- * <p>This type intentionally remains non-final because Spring creates a class-based scoped proxy for
- * the request-scoped {@code UserContext} bean. Record types are implicitly final and therefore cannot
- * be proxied with CGLIB.
+ * <p>This type intentionally remains non-final because Spring creates a class-based scoped proxy
+ * for the request-scoped {@code UserContext} bean. Record types are implicitly final and therefore
+ * cannot be proxied with CGLIB.
  */
 public class UserContext {
     private final String userId;
