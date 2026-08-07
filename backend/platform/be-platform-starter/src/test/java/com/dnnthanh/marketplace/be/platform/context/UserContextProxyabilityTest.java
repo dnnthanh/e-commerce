@@ -1,7 +1,7 @@
 package com.dnnthanh.marketplace.be.platform.context;
 
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import java.util.Set;
 import org.junit.jupiter.api.Test;
@@ -16,8 +16,9 @@ class UserContextProxyabilityTest {
         proxyFactory.setTarget(new UserContext("user-1", "alice", UserContext.ActorType.USER, Set.of("BUYER")));
         proxyFactory.setProxyTargetClass(true);
 
-        Object proxy = assertDoesNotThrow(proxyFactory::getProxy);
+        Object proxy = proxyFactory.getProxy();
 
+        assertNotNull(proxy);
         assertEquals(UserContext.class, proxyFactory.getTargetClass());
     }
 }
