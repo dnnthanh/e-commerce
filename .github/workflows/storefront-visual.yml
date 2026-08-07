@@ -2,6 +2,8 @@ name: storefront-real-data-visual
 
 on:
   workflow_dispatch:
+  push:
+    branches: [fix/storefront-visual-runtime]
   pull_request:
     branches: [develop, master]
     paths:
