@@ -37,6 +37,22 @@ require(
     'SKU dùng cho pricing/cart' not in product_detail,
     'product detail still exposes diagnostic SKU input',
 )
+for snippet in ['selectedMedia', '[src]="selected.url"', '.media-thumb img']:
+    require(snippet in product_detail, f'product detail missing real media gallery: {snippet}')
+
+product_card = text('frontend/projects/storefront/src/app/shared/product-card.component.ts')
+for snippet in ['productMedia(productId)', 'img', '[src]="imageUrl"']:
+    require(snippet in product_card, f'product card missing Media-backed image rendering: {snippet}')
+
+media_response = text(
+    'backend/services/be-media-api/src/main/java/com/dnnthanh/marketplace/be/media/api/api/response/VariantView.java'
+)
+require('String url' in media_response, 'Media public response does not expose browser delivery URL')
+media_config = text('backend/services/be-media-api/src/main/resources/application.yml')
+require(
+    'MINIO_PUBLIC_BASE_URL' in media_config,
+    'Media service does not bind the public/browser MinIO endpoint',
+)
 
 checkout = text('frontend/projects/storefront/src/app/features/checkout.component.ts')
 for snippet in [
@@ -69,6 +85,16 @@ storefront_text = '\n'.join(
 )
 require("'/internal/" not in storefront_text, 'storefront TypeScript calls /internal/**')
 require('"/internal/' not in storefront_text, 'storefront TypeScript calls /internal/**')
+
+visual_spec = text('frontend/playwright/storefront.visual.spec.ts')
+for forbidden in ['page.route(', 'installBusinessApiMocks']:
+    require(forbidden not in visual_spec, f'visual test still mocks business APIs: {forbidden}')
+for snippet in ['localhost:9000', 'product-gallery-main img', 'home-real-data-desktop']:
+    require(snippet in visual_spec, f'real-data visual evidence missing: {snippet}')
+
+visual_workflow = text('.github/workflows/storefront-visual.yml')
+for snippet in ['media-seed', 'seed-postgres-demo', 'Verify Media metadata resolves to a real MinIO object']:
+    require(snippet in visual_workflow, f'real-stack visual workflow missing: {snippet}')
 
 coverage = text('frontend/COVERAGE-MATRIX.md')
 require(
