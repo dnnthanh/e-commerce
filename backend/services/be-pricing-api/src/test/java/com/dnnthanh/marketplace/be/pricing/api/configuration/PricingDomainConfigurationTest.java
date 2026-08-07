@@ -11,7 +11,8 @@ class PricingDomainConfigurationTest {
 
     @Test
     void exposesEffectivePriceResolverAsSpringBean() {
-        try (var context = new AnnotationConfigApplicationContext(PricingDomainConfiguration.class)) {
+        try (var context =
+                new AnnotationConfigApplicationContext(PricingDomainConfiguration.class)) {
             EffectivePriceResolver resolver = context.getBean(EffectivePriceResolver.class);
             assertSame(resolver, context.getBean("effectivePriceResolver"));
         }
