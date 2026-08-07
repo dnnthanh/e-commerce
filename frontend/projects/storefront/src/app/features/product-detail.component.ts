@@ -36,13 +36,28 @@ import { StorefrontCartStore } from '../shared/storefront-cart.store';
       <ng-container *ngIf="!loading() && product() as product">
         <div class="detail-grid">
           <section>
-            <div class="gallery-main">{{ product.name.slice(0, 2).toUpperCase() }}</div>
+            <div class="gallery-main product-gallery-main">
+              <img
+                *ngIf="selectedMedia() as selected; else galleryFallback"
+                [src]="selected.url"
+                [alt]="product.name"
+                decoding="async"
+                (error)="selectedMedia.set(undefined)"
+              />
+              <ng-template #galleryFallback>{{ product.name.slice(0, 2).toUpperCase() }}</ng-template>
+            </div>
             <div class="variant-strip" *ngIf="mediaVariants().length">
-              <div *ngFor="let media of mediaVariants(); let index = index">
-                <strong>Ảnh {{ index + 1 }}</strong>
-                <span>{{ media.placement }}</span>
-                <small>{{ media.width }}×{{ media.height }} · {{ media.format }}</small>
-              </div>
+              <button
+                type="button"
+                class="media-thumb"
+                *ngFor="let media of mediaVariants(); let index = index"
+                [class.selected]="selectedMedia()?.objectKey === media.objectKey"
+                (click)="selectedMedia.set(media)"
+                [attr.aria-label]="'Xem ảnh ' + (index + 1)"
+              >
+                <img [src]="media.url" [alt]="product.name + ' - ảnh ' + (index + 1)" loading="lazy" />
+                <small>{{ media.placement }}</small>
+              </button>
             </div>
           </section>
 
@@ -148,12 +163,55 @@ import { StorefrontCartStore } from '../shared/storefront-cart.store';
       </ng-container>
     </section>
   `,
+  styles: [
+    `
+      .product-gallery-main {
+        overflow: hidden;
+      }
+      .product-gallery-main img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        display: block;
+        background: white;
+      }
+      .media-thumb {
+        min-width: 112px;
+        width: 112px;
+        padding: 8px;
+        border-radius: 12px;
+        background: white;
+        color: #26324a;
+        border: 1px solid #e3e7ef;
+        display: block;
+      }
+      .media-thumb.selected {
+        border-color: #496ce5;
+        box-shadow: 0 0 0 2px #496ce51e;
+      }
+      .media-thumb img {
+        width: 94px;
+        height: 78px;
+        display: block;
+        object-fit: cover;
+        border-radius: 8px;
+      }
+      .media-thumb small {
+        display: block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        margin-top: 7px;
+      }
+    `,
+  ],
 })
 export class ProductDetailComponent implements OnInit {
   readonly product = signal<ProductView | undefined>(undefined);
   readonly offers = signal<ProductOfferView[]>([]);
   readonly selectedOffer = signal<ProductOfferView | undefined>(undefined);
   readonly mediaVariants = signal<MediaVariant[]>([]);
+  readonly selectedMedia = signal<MediaVariant | undefined>(undefined);
   readonly comments = signal<CommentThread[]>([]);
   readonly reviews = signal<ReviewView[]>([]);
   readonly summary = signal<ReviewSummary | undefined>(undefined);
@@ -188,6 +246,11 @@ export class ProductDetailComponent implements OnInit {
       this.product.set(product);
       this.offers.set(offers);
       this.mediaVariants.set(media);
+      this.selectedMedia.set(
+        media.find((variant) => variant.placement === 'PRODUCT_DETAIL') ??
+          media.find((variant) => variant.placement === 'HOME_CARD') ??
+          media[0],
+      );
       this.comments.set(comments.data);
       this.reviews.set(reviews.data);
       this.summary.set(summary);
