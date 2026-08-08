@@ -80,9 +80,20 @@ jobs:
       - name: Start real storefront backend slice only
         run: |
           set -euo pipefail
-          # Start each service independently. Catalog and Media have reciprocal
-          # health-based Compose dependencies in the full stack, while this visual
-          # smoke intentionally boots only the Storefront read slice.
+          # The hosted runner can already have 8084 occupied. The visual test never
+          # calls Media directly from the host, so publish its container port on an
+          # ephemeral host port while keeping be-media-api:8080 unchanged internally.
+          python - <<'PY'
+          from pathlib import Path
+
+          compose = Path('docker-compose.yml')
+          content = compose.read_text()
+          fixed_media_port = '    - 8084:8080\n'
+          if content.count(fixed_media_port) != 1:
+              raise SystemExit('Expected exactly one be-media-api host port mapping')
+          compose.write_text(content.replace(fixed_media_port, '    - "8080"\n'))
+          PY
+
           services=(
             be-authorization-api
             be-catalog-api
