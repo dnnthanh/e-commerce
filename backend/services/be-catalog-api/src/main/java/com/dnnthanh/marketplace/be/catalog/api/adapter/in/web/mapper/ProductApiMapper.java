@@ -1,8 +1,10 @@
 package com.dnnthanh.marketplace.be.catalog.api.adapter.in.web.mapper;
 
 import com.dnnthanh.marketplace.be.catalog.api.api.request.search.ProductSearchRequest;
+import com.dnnthanh.marketplace.be.catalog.api.api.response.ProductOfferResponse;
 import com.dnnthanh.marketplace.be.catalog.api.api.response.ProductResponse;
 import com.dnnthanh.marketplace.be.catalog.api.api.response.SkuOwnerView;
+import com.dnnthanh.marketplace.be.catalog.api.application.dto.ProductOffer;
 import com.dnnthanh.marketplace.be.catalog.api.application.dto.SkuCheckoutSnapshot;
 import com.dnnthanh.marketplace.be.catalog.api.application.query.ProductSearchCriteria;
 import com.dnnthanh.marketplace.be.catalog.api.domain.model.Product;
@@ -24,4 +26,6 @@ public interface ProductApiMapper
     ProductResponse modelToResponse(Product product);
 
     SkuOwnerView toView(SkuCheckoutSnapshot snapshot);
+
+    ProductOfferResponse toResponse(ProductOffer offer);
 }

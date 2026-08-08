@@ -19,7 +19,15 @@ public interface MediaApiMapper extends MapperContract {
 
     UploadSession toResponse(MediaUploadSessionResult result);
 
-    VariantView toResponse(MediaVariantResult result);
+    default VariantView toResponse(MediaVariantResult result, String url) {
+        return new VariantView(
+                result.placement(),
+                result.width(),
+                result.height(),
+                result.format(),
+                result.objectKey(),
+                url);
+    }
 
     Readiness toResponse(MediaReadinessResult result);
 }
