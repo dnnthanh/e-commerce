@@ -80,17 +80,21 @@ jobs:
       - name: Start real storefront backend slice only
         run: |
           set -euo pipefail
-          # --no-deps is intentional: be-gateway's canonical Compose dependency graph
-          # includes unrelated domains (for example audit/operations). This visual test
-          # should boot only the Storefront read slice it exercises.
-          docker compose up -d --no-deps \
-            be-authorization-api \
-            be-catalog-api \
-            be-media-api \
-            be-pricing-api \
-            be-review-api \
-            be-comment-api \
+          # Start each service independently. Catalog and Media have reciprocal
+          # health-based Compose dependencies in the full stack, while this visual
+          # smoke intentionally boots only the Storefront read slice.
+          services=(
+            be-authorization-api
+            be-catalog-api
+            be-media-api
+            be-pricing-api
+            be-review-api
+            be-comment-api
             be-gateway
+          )
+          for service in "${services[@]}"; do
+            docker compose up -d --no-deps "$service"
+          done
 
       - name: Wait for storefront backend slice
         shell: bash
@@ -171,9 +175,13 @@ jobs:
         if: failure()
         run: |
           mkdir -p visual-ci-logs
-          docker compose ps > visual-ci-logs/compose-ps.txt || true
+          docker compose ps -a > visual-ci-logs/compose-ps.txt || true
           for service in postgres mysql mongo redis kafka keycloak minio be-authorization-api be-catalog-api be-media-api be-pricing-api be-review-api be-comment-api be-gateway; do
             docker compose logs --no-color --tail=400 "$service" > "visual-ci-logs/${service}.log" 2>&1 || true
+            id=$(docker compose ps -aq "$service" | head -n 1)
+            if [ -n "$id" ]; then
+              docker inspect -f 'status={{.State.Status}} exit={{.State.ExitCode}} oom={{.State.OOMKilled}} error={{.State.Error}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}n/a{{end}}' "$id" > "visual-ci-logs/${service}.state.txt" 2>&1 || true
+            fi
           done
 
       - name: Upload real-stack diagnostics
