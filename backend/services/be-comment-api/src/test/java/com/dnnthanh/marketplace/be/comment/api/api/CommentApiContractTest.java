@@ -15,8 +15,7 @@ class CommentApiContractTest {
     void exposesBrowserSafeModerationCommandsWithModeratorPermission() {
         assertThat(postMappings(CommentApi.class))
                 .contains(
-                        "/private/comments/{threadId}/hide",
-                        "/private/comments/{threadId}/unhide");
+                        "/private/comments/{threadId}/hide", "/private/comments/{threadId}/unhide");
 
         assertThat(preAuthorizeExpressions(CommentApi.class, "hide", "unhide"))
                 .hasSize(2)
