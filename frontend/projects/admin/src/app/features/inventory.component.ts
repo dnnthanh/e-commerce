@@ -1,28 +1,103 @@
 import { CommonModule } from '@angular/common';
-import { Component, OnInit, signal } from '@angular/core';
+import { Component, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MarketplaceApiService } from '../../../../../shared/marketplace-api.service';
 import { BalanceView } from '../../../../../shared/marketplace-types';
-import { errorMessage } from '../../../../../shared/ui-state';
-@Component({ standalone: true, selector: 'admin-inventory', imports: [CommonModule, FormsModule], template: `<section><div class="page-title"><div><small>INVENTORY / RESERVATION</small><h1>Balances</h1></div><button (click)="load(0)">Refresh</button></div><form class="filters" (ngSubmit)="load(0)"><input type="number" [(ngModel)]="skuId" name="sku" placeholder="SKU optional"><input type="number" [(ngModel)]="warehouseId" name="warehouse" placeholder="Warehouse optional"><button>Filter</button></form><div class="error" *ngIf="error()">{{error()}}</div><div class="panel"><table><thead><tr><th>SKU</th><th>Warehouse</th><th>On hand</th><th>Reserved</th><th>Available</th><th>Version</th></tr></thead><tbody><tr *ngFor="let b of balances()"><td>{{b.skuId}}</td><td>{{b.warehouseId}}</td><td>{{b.onHand}}</td><td>{{b.reserved}}</td><td><b>{{b.available}}</b></td><td>{{b.version}}</td></tr></tbody></table><div class="row"><button class="ghost" [disabled]="page()===0" (click)="load(page()-1)">Prev</button><span>page {{page()+1}} / {{totalPages()}}</span><button class="ghost" [disabled]="!hasNext()" (click)="load(page()+1)">Next</button></div></div><p class="hint">Reservations are checkout/internal flows. Admin observes balances and version contention rather than calling internal reservation APIs from the browser.</p></section>` })
+import { UiErrorView, uiError } from '../../../../../shared/ui-state';
+import { AdminPageHeaderComponent } from '../shared/admin-page-header.component';
+import { AdminStateComponent } from '../shared/admin-state.component';
+
+@Component({
+  standalone: true,
+  selector: 'admin-inventory',
+  imports: [CommonModule, FormsModule, AdminPageHeaderComponent, AdminStateComponent],
+  template: `
+    <section>
+      <admin-page-header
+        eyebrow="INVENTORY / RESERVATION"
+        title="Balances"
+        description="Observe stock balances and optimistic version contention without exposing internal reservation commands to the browser."
+      >
+        <button actions type="button" class="ghost" [disabled]="loading()" (click)="load(page())">Refresh</button>
+      </admin-page-header>
+
+      <form class="filters" (ngSubmit)="load(0)">
+        <label>SKU<input type="number" min="1" [(ngModel)]="skuId" name="sku" placeholder="Optional"></label>
+        <label>Warehouse<input type="number" min="1" [(ngModel)]="warehouseId" name="warehouse" placeholder="Optional"></label>
+        <button type="submit" [disabled]="loading()">Filter</button>
+      </form>
+
+      <admin-state
+        *ngIf="failure() as problem"
+        kind="error"
+        title="Inventory balances unavailable"
+        [message]="problem.message"
+        [traceId]="problem.traceId"
+        [retryable]="true"
+        (retry)="load(page())"
+      />
+      <admin-state *ngIf="loading()" kind="loading" title="Loading balances" message="Reading current inventory balances." />
+      <admin-state *ngIf="!loading() && !failure() && balances().length === 0" kind="empty" title="No balances" message="No balance rows matched the current filters." />
+
+      <div class="panel" *ngIf="balances().length">
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>SKU</th><th>Warehouse</th><th>On hand</th><th>Reserved</th><th>Available</th><th>Version</th></tr></thead>
+            <tbody>
+              <tr *ngFor="let balance of balances()">
+                <td>{{ balance.skuId }}</td>
+                <td>{{ balance.warehouseId }}</td>
+                <td>{{ balance.onHand }}</td>
+                <td>{{ balance.reserved }}</td>
+                <td><b>{{ balance.available }}</b></td>
+                <td>{{ balance.version }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="row">
+          <button type="button" class="ghost" [disabled]="page() === 0" (click)="load(page() - 1)">Prev</button>
+          <span>page {{ page() + 1 }} / {{ totalPages() }}</span>
+          <button type="button" class="ghost" [disabled]="!hasNext()" (click)="load(page() + 1)">Next</button>
+        </div>
+      </div>
+    </section>
+  `,
+})
 export class InventoryComponent implements OnInit {
-    skuId?: number;
-    warehouseId?: number;
-    readonly balances = signal<BalanceView[]>([]);
-    readonly error = signal('');
-    readonly page = signal(0);
-    readonly totalPages = signal(1);
-    readonly hasNext = signal(false);
-    constructor(private readonly marketplace: MarketplaceApiService) { }
-    async ngOnInit() { await this.load(0); }
-    async load(page: number) { try {
-        const r = await this.marketplace.balances(page, 50, this.skuId, this.warehouseId);
-        this.balances.set(r.data);
-        this.page.set(r.metadata.page);
-        this.totalPages.set(r.metadata.totalPages);
-        this.hasNext.set(r.metadata.hasNext);
+  private readonly marketplace = inject(MarketplaceApiService);
+  skuId?: number;
+  warehouseId?: number;
+  readonly balances = signal<BalanceView[]>([]);
+  readonly failure = signal<UiErrorView | undefined>(undefined);
+  readonly loading = signal(false);
+  readonly page = signal(0);
+  readonly totalPages = signal(1);
+  readonly hasNext = signal(false);
+
+  async ngOnInit(): Promise<void> {
+    await this.load(0);
+  }
+
+  async load(targetPage: number): Promise<void> {
+    this.loading.set(true);
+    this.failure.set(undefined);
+    try {
+      const result = await this.marketplace.balances(
+        Math.max(0, targetPage),
+        50,
+        this.skuId,
+        this.warehouseId,
+      );
+      this.balances.set(result.data);
+      this.page.set(result.metadata.page);
+      this.totalPages.set(result.metadata.totalPages);
+      this.hasNext.set(result.metadata.hasNext);
+    } catch (error) {
+      this.balances.set([]);
+      this.failure.set(uiError(error));
+    } finally {
+      this.loading.set(false);
     }
-    catch (e) {
-        this.error.set(errorMessage(e));
-    } }
+  }
 }
