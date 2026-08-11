@@ -1,0 +1,193 @@
+name: admin-real-data-visual
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [develop, master]
+    paths:
+      - 'frontend/**'
+      - 'backend/services/be-authorization-api/**'
+      - 'backend/services/be-catalog-api/**'
+      - 'backend/services/be-review-api/**'
+      - 'backend/services/be-comment-api/**'
+      - 'backend/services/be-order-api/**'
+      - 'backend/services/be-fulfillment-api/**'
+      - 'backend/services/be-operations-api/**'
+      - 'backend/services/be-gateway/**'
+      - 'compose/**'
+      - 'docker-compose.yml'
+      - 'data/seed-demo/**'
+      - 'infrastructure/keycloak/**'
+      - '.github/workflows/admin-visual.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: admin-real-data-visual-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  real-data-admin:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    env:
+      COMPOSE_PARALLEL_LIMIT: '2'
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22.22.3'
+          package-manager-cache: false
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm install --no-audit --no-fund
+
+      - name: Build Admin frontend
+        working-directory: frontend
+        run: npm run build:admin
+
+      - name: Install Chromium
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Start Admin core infrastructure
+        run: |
+          set -euo pipefail
+          docker compose up -d postgres mysql sqlserver mongo mongo-init redis kafka keycloak
+
+      - name: Build backend runtime
+        run: docker compose build backend-runtime-build
+
+      - name: Wait for Keycloak and bootstrap operator permission
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 60); do
+            id=$(docker compose ps -q keycloak)
+            if [ -n "$id" ]; then
+              status=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$id")
+              echo "keycloak=$status"
+              if [ "$status" = healthy ]; then
+                break
+              fi
+            fi
+            if [ "$attempt" -eq 60 ]; then
+              docker compose logs --no-color --tail=300 keycloak
+              exit 1
+            fi
+            sleep 5
+          done
+          docker compose run --rm --no-deps keycloak-bootstrap
+
+      - name: Start real Admin backend slice only
+        run: |
+          set -euo pipefail
+          services=(
+            be-authorization-api
+            be-catalog-api
+            be-review-api
+            be-comment-api
+            be-order-api
+            be-fulfillment-api
+            be-operations-api
+            be-gateway
+          )
+          for service in "${services[@]}"; do
+            docker compose up -d --no-deps "$service"
+          done
+
+      - name: Wait for Admin backend slice
+        shell: bash
+        run: |
+          set -euo pipefail
+          services=(be-authorization-api be-catalog-api be-review-api be-comment-api be-order-api be-fulfillment-api be-operations-api be-gateway)
+          for attempt in $(seq 1 90); do
+            unhealthy=0
+            for service in "${services[@]}"; do
+              id=$(docker compose ps -q "$service")
+              if [ -z "$id" ]; then
+                unhealthy=1
+                continue
+              fi
+              status=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$id")
+              echo "$service=$status"
+              if [ "$status" != healthy ]; then
+                unhealthy=1
+              fi
+            done
+            if [ "$unhealthy" -eq 0 ]; then
+              exit 0
+            fi
+            sleep 5
+          done
+          docker compose ps -a
+          exit 1
+
+      - name: Seed real PostgreSQL Admin data
+        run: |
+          set -euo pipefail
+          docker compose run --rm --no-deps --entrypoint sh seed-postgres-demo -c '
+            set -e
+            PGPASSWORD=catalog_password psql -h postgres -U catalog -d catalog_db -f /seed/catalog.sql
+            PGPASSWORD=operations_password psql -h postgres -U operations_user -d operations_db -f /seed/operations.sql
+            PGPASSWORD=authorization_password psql -h postgres -U authorization_app -d authorization_db -f /seed/authorization.sql
+          '
+
+      - name: Seed real MySQL Review data
+        run: |
+          set -euo pipefail
+          docker compose run --rm --no-deps --entrypoint sh seed-mysql-demo -c '
+            set -e
+            mysql -h mysql -uroot -proot_password review_db < /seed/review.sql
+          '
+
+      - name: Seed real Mongo Comment data
+        run: docker compose run --rm --no-deps seed-mongo-demo
+
+      - name: Seed real SQL Server Order and Fulfillment data
+        run: docker compose run --rm --no-deps seed-sqlserver-demo
+
+      - name: Run Admin Playwright against real services
+        working-directory: frontend
+        env:
+          CI: 'true'
+        run: npx playwright test -c playwright.admin.config.ts
+
+      - name: Upload Admin screenshots and Playwright report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: admin-real-data-visuals
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            frontend/playwright-artifacts/admin-core-flow
+            frontend/playwright-report
+            frontend/test-results
+
+      - name: Capture real-stack logs on failure
+        if: failure()
+        run: |
+          mkdir -p admin-visual-ci-logs
+          docker compose ps -a > admin-visual-ci-logs/compose-ps.txt || true
+          for service in postgres mysql sqlserver mongo redis kafka keycloak be-authorization-api be-catalog-api be-review-api be-comment-api be-order-api be-fulfillment-api be-operations-api be-gateway; do
+            docker compose logs --no-color --tail=400 "$service" > "admin-visual-ci-logs/${service}.log" 2>&1 || true
+            id=$(docker compose ps -aq "$service" | head -n 1)
+            if [ -n "$id" ]; then
+              docker inspect -f 'status={{.State.Status}} exit={{.State.ExitCode}} oom={{.State.OOMKilled}} error={{.State.Error}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}n/a{{end}}' "$id" > "admin-visual-ci-logs/${service}.state.txt" 2>&1 || true
+            fi
+          done
+
+      - name: Upload Admin real-stack diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: admin-real-data-visual-diagnostics
+          path: admin-visual-ci-logs
+
+      - name: Stop real Admin stack
+        if: always()
+        run: docker compose down --remove-orphans -v
