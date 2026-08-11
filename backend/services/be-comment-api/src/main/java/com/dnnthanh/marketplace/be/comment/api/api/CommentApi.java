@@ -74,18 +74,14 @@ public interface CommentApi {
             @PathVariable String threadId, @Valid @RequestBody CommentReportRequest request);
 
     /** Hides a thread for internal callers or an authorized browser moderator. */
-    @PostMapping({
-        "/internal/comments/{threadId}/hide",
-        "/private/comments/{threadId}/hide"
-    })
+    @PostMapping({"/internal/comments/{threadId}/hide", "/private/comments/{threadId}/hide"})
     @PreAuthorize("@authorizationService.hasPermission('COMMENT_MODERATE')")
     CommentThreadResponse hide(@PathVariable String threadId);
 
-    /** Restores a moderation-hidden thread for internal callers or an authorized browser moderator. */
-    @PostMapping({
-        "/internal/comments/{threadId}/unhide",
-        "/private/comments/{threadId}/unhide"
-    })
+    /**
+     * Restores a moderation-hidden thread for internal callers or an authorized browser moderator.
+     */
+    @PostMapping({"/internal/comments/{threadId}/unhide", "/private/comments/{threadId}/unhide"})
     @PreAuthorize("@authorizationService.hasPermission('COMMENT_MODERATE')")
     CommentThreadResponse unhide(@PathVariable String threadId);
 }
