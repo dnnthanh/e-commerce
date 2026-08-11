@@ -1,6 +1,7 @@
 package com.dnnthanh.marketplace.be.catalog.api.api;
 
 import com.dnnthanh.marketplace.be.catalog.api.api.request.search.ProductSearchRequest;
+import com.dnnthanh.marketplace.be.catalog.api.api.response.ProductOfferResponse;
 import com.dnnthanh.marketplace.be.catalog.api.api.response.ProductResponse;
 import com.dnnthanh.marketplace.be.platform.api.ApiResponse;
 import jakarta.validation.Valid;
@@ -22,7 +23,15 @@ public interface ProductPublicApi {
             @Valid @ModelAttribute ProductSearchRequest request,
             @PageableDefault(size = 20) Pageable pageable);
 
-    /** Returns one published product. @param productId product id @return product details */
+    /** Returns one published product. */
     @GetMapping("/{productId}")
     ProductResponse get(@PathVariable Long productId);
+
+    /** Returns customer-safe sellable SKU options for one published product. */
+    @GetMapping("/{productId}/offers")
+    List<ProductOfferResponse> offers(@PathVariable Long productId);
+
+    /** Returns one customer-safe sellable SKU option for cart enrichment. */
+    @GetMapping("/offers/{skuId}")
+    ProductOfferResponse offer(@PathVariable Long skuId);
 }

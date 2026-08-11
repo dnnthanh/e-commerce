@@ -1,13 +1,16 @@
 package com.dnnthanh.marketplace.be.catalog.api.application.service;
 
+import com.dnnthanh.marketplace.be.catalog.api.application.dto.ProductOffer;
 import com.dnnthanh.marketplace.be.catalog.api.application.exception.ProductNotFoundException;
 import com.dnnthanh.marketplace.be.catalog.api.application.port.in.ProductUseCase;
 import com.dnnthanh.marketplace.be.catalog.api.application.port.out.MediaReadinessPort;
+import com.dnnthanh.marketplace.be.catalog.api.application.port.out.ProductOfferPort;
 import com.dnnthanh.marketplace.be.catalog.api.application.port.out.ProductRepositoryPort;
 import com.dnnthanh.marketplace.be.catalog.api.application.query.ProductSearchCriteria;
 import com.dnnthanh.marketplace.be.catalog.api.domain.model.Product;
 import com.dnnthanh.marketplace.be.catalog.api.domain.model.ProductStatus;
 import com.dnnthanh.marketplace.be.platform.stereotype.UseCase;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -20,6 +23,7 @@ public class ProductServiceImplement implements ProductUseCase {
 
     private final ProductRepositoryPort repository;
     private final MediaReadinessPort mediaReadiness;
+    private final ProductOfferPort offerPort;
 
     @Transactional
     public Product create(Long sellerId, Long categoryId, String name, String description) {
@@ -48,6 +52,19 @@ public class ProductServiceImplement implements ProductUseCase {
     @Transactional(readOnly = true)
     public Page<Product> search(ProductSearchCriteria criteria, Pageable pageable) {
         return repository.search(criteria, pageable);
+    }
+
+    /** Returns public sellable SKU projections only after verifying product visibility. */
+    @Transactional(readOnly = true)
+    public List<ProductOffer> offers(Long productId) {
+        getPublished(productId);
+        return offerPort.findSellableByProductId(productId);
+    }
+
+    /** Returns one customer-safe sellable SKU projection. */
+    @Transactional(readOnly = true)
+    public ProductOffer offer(Long skuId) {
+        return offerPort.findSellableBySkuId(skuId).orElseThrow(ProductNotFoundException::new);
     }
 
     private Product requireProduct(Long productId) {

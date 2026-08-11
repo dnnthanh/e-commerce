@@ -1,6 +1,6 @@
 # Marketplace Angular applications
 
-The repository contains two Angular 22 applications: customer `storefront` and operations/admin `admin`. They use the same backend envelope/error/trace contract through `shared/ApiService` and the bounded-context facade `shared/MarketplaceApiService`.
+The repository contains two Angular 22 applications: customer `storefront` and operations/admin `admin`. They share the backend envelope/error/trace contract through `shared/ApiService` and the bounded-context facade `shared/MarketplaceApiService`.
 
 ## HTTP contract
 
@@ -11,19 +11,41 @@ The repository contains two Angular 22 applications: customer `storefront` and o
 - `ApiClientError`: retains backend error code, localized message, validation details, HTTP status and `traceId`.
 - Browser code must not call `/internal/**`; internal service contracts remain server-to-server.
 
-## Storefront flows
+## Storefront core customer flow
 
-- Catalog home and OpenSearch discovery with cursor pagination.
-- Product 360: catalog, media variants, effective price, review summary, comments/Q&A, seller follow, cart add.
-- Optimistic-version cart: quantity/select/remove/save-for-later and backend validation.
-- Cart-driven checkout: idempotency key, selected lines, promotion codes, payment provider and persistent saga result.
-- Order history + detail + seller-order monetary snapshots + shipment tracking + cancellation.
-- Return creation and dispute lifecycle.
-- Review/comment community actions.
-- Durable notification inbox + realtime stream + notification preferences.
-- Account authorization snapshot and seller shop view.
+The storefront is routed as a customer journey instead of an API diagnostic shell:
 
-The public catalog contract currently does not expose a complete public SKU/offer projection. Product detail therefore requires a SKU identifier for effective pricing/cart actions in the demo. This is documented as a backend API gap rather than inventing a browser call to the internal catalog SKU endpoint.
+```text
+Home / Category / Search
+    -> Product Detail + public Catalog offers
+    -> Cart
+    -> Checkout
+    -> Order Detail / Tracking
+```
+
+Main routes:
+
+- `/` — Catalog-backed marketplace home.
+- `/search` — OpenSearch discovery with cursor/search-after pagination and route query state.
+- `/category/:id` — public Catalog category filtering.
+- `/product/:id` — Product 360 with media/community plus real sellable variant selection.
+- `/cart` — authenticated versioned cart enriched with public Catalog offer labels.
+- `/checkout` — authenticated cart-driven, idempotent persistent-Saga checkout.
+- `/orders` and `/orders/:orderNo` — customer order history, monetary summary and shipment tracking.
+- `/account` — authorization-aware account UX and notification preferences.
+
+### Public Catalog offer projection
+
+Product Detail no longer asks the user to type an SKU identifier. The storefront uses:
+
+```http
+GET /products/{productId}/offers
+GET /products/offers/{skuId}
+```
+
+The projection exposes only customer-safe Catalog data such as SKU identity, product/seller linkage, variant label and purchase limit. Effective price still comes from Pricing and inventory/reservation truth still belongs to Inventory.
+
+The single-SKU lookup is also used to enrich existing cart lines after page reload; the cart remains authoritative for version, quantity and price snapshot.
 
 ## Admin/operations flows
 
@@ -45,7 +67,7 @@ The public catalog contract currently does not expose a complete public SKU/offe
 
 ```bash
 cd frontend
-npm install
+npm install --no-audit --no-fund
 npm run build:storefront
 npm run build:admin
 ```
@@ -57,11 +79,12 @@ docker build -f frontend/Dockerfile.storefront frontend
 docker build -f frontend/Dockerfile.admin frontend
 ```
 
-Static contract/syntax gates:
+Repository static gates include:
 
 ```bash
-python ci-cdconfigs/verify_frontend_backend_coverage_v11.py
-node ci-cdconfigs/verify_frontend_typescript_syntax_v11.js
+python verification/verify_storefront_core_flow_v14.py
+python verification/verify_keycloak_authority_v17.py
+for script in verification/verify_*.py; do python "$script"; done
 ```
 
-See [`COVERAGE-MATRIX.md`](COVERAGE-MATRIX.md) for the storefront/admin bounded-context coverage and explicit API gaps.
+See [`COVERAGE-MATRIX.md`](COVERAGE-MATRIX.md) for bounded-context coverage and remaining deliberate API gaps.

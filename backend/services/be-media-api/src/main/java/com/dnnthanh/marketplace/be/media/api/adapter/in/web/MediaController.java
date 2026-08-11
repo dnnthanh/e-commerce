@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class MediaController implements MediaApi {
     private final MediaUseCase useCase;
     private final MediaApiMapper mapper;
+    private final PublicMediaUrlResolver publicMediaUrlResolver;
 
     @Override
     public UploadSession createUpload(CreateUploadRequest request) {
@@ -29,7 +30,12 @@ public class MediaController implements MediaApi {
 
     @Override
     public List<VariantView> productAssets(Long productId) {
-        return useCase.variants(productId).stream().map(mapper::toResponse).toList();
+        return useCase.variants(productId).stream()
+                .map(
+                        result ->
+                                mapper.toResponse(
+                                        result, publicMediaUrlResolver.resolve(result.objectKey())))
+                .toList();
     }
 
     @Override

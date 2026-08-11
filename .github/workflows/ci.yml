@@ -51,7 +51,7 @@ jobs:
 
   frontend:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     defaults:
       run:
         working-directory: frontend
@@ -93,8 +93,31 @@ jobs:
         run: docker compose build admin
       - name: Build media seed image
         run: docker compose build media-seed
+      - name: Verify Media seed uploads DB-aligned objects
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker compose up -d minio
+          for attempt in $(seq 1 30); do
+            if docker compose exec -T minio curl -fsS http://localhost:9000/minio/health/live >/dev/null; then
+              break
+            fi
+            sleep 2
+          done
+          docker compose run --rm --no-deps media-seed
+          docker compose run --rm --no-deps --entrypoint sh media-seed -c '
+            mc alias set marketplace http://minio:9000 marketplace marketplace-secret >/dev/null
+            mc stat marketplace/marketplace-media/seed/products/1001/original.webp >/dev/null
+            mc stat marketplace/marketplace-media/seed/products/1001/home-480.avif >/dev/null
+            mc stat marketplace/marketplace-media/seed/products/1001/search-640.avif >/dev/null
+            mc stat marketplace/marketplace-media/seed/products/1001/detail-1600.webp >/dev/null
+            printf "MEDIA_SEED_MINIO_SMOKE_OK\n"
+          '
       - name: Build Kafka JMX exporter image
         run: docker compose build kafka-jmx-exporter
+      - name: Stop Media seed smoke infrastructure
+        if: always()
+        run: docker compose down --remove-orphans -v
 
   core-infrastructure-smoke:
     runs-on: ubuntu-latest
