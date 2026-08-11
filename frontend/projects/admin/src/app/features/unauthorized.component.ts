@@ -1,4 +1,5 @@
-import { Component, inject } from '@angular/core';
+import { Component, OnInit, inject } from '@angular/core';
+import { Router } from '@angular/router';
 import { AuthService } from '../../../../../shared/auth.service';
 import { AdminStateComponent } from '../shared/admin-state.component';
 
@@ -17,6 +18,12 @@ import { AdminStateComponent } from '../shared/admin-state.component';
     </section>
   `,
 })
-export class UnauthorizedComponent {
+export class UnauthorizedComponent implements OnInit {
   readonly auth = inject(AuthService);
+  private readonly router = inject(Router);
+
+  async ngOnInit(): Promise<void> {
+    await this.auth.ensureInitialized();
+    if (this.auth.authenticated()) await this.router.navigateByUrl('/');
+  }
 }
