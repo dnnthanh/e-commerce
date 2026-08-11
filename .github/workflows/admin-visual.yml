@@ -105,20 +105,24 @@ jobs:
           set -euo pipefail
           services=(be-authorization-api be-catalog-api be-review-api be-comment-api be-order-api be-fulfillment-api be-operations-api be-gateway)
           for attempt in $(seq 1 90); do
-            unhealthy=0
+            unavailable=0
             for service in "${services[@]}"; do
               id=$(docker compose ps -q "$service")
               if [ -z "$id" ]; then
-                unhealthy=1
+                echo "$service=missing"
+                unavailable=1
                 continue
               fi
-              status=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$id")
-              echo "$service=$status"
-              if [ "$status" != healthy ]; then
-                unhealthy=1
+              state=$(docker inspect -f '{{.State.Status}}' "$id")
+              health=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$id")
+              echo "$service state=$state health=$health"
+              if [ "$state" != running ]; then
+                unavailable=1
+              elif [ "$health" != none ] && [ "$health" != healthy ]; then
+                unavailable=1
               fi
             done
-            if [ "$unhealthy" -eq 0 ]; then
+            if [ "$unavailable" -eq 0 ]; then
               exit 0
             fi
             sleep 5
