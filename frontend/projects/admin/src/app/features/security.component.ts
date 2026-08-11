@@ -1,26 +1,117 @@
 import { CommonModule } from '@angular/common';
-import { Component, signal } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { ApiService } from '../../../../../shared/api.service';
-import { errorMessage } from '../../../../../shared/ui-state';
-/** Permission administration page writing role/seller scope changes back to Keycloak through Authorization service. */
-@Component({ standalone: true, selector: 'admin-security', imports: [CommonModule, FormsModule], template: `<section><div class="page-title"><div><small>KEYCLOAK AUTHORIZATION</small><h1>Roles, permissions & seller scope</h1></div></div><div class="two-col"><div class="panel"><h2>User authorization</h2><label>Keycloak user ID<input [(ngModel)]="userId"></label><button (click)="load()">Load snapshot</button><div class="error" *ngIf="error()">{{error()}}</div><pre class="json" *ngIf="snapshot()">{{snapshot()|json}}</pre></div><div class="panel"><h2>Mutations</h2><label>Role<input [(ngModel)]="role" placeholder="SELLER_MANAGER"></label><div class="row"><button (click)="assignRole()">Assign role</button><button class="ghost" (click)="removeRole()">Remove</button></div><label>Seller scope<input type="number" [(ngModel)]="sellerId"></label><div class="row"><button (click)="assignSeller()">Assign seller</button><button class="ghost" (click)="removeSeller()">Remove</button></div><p class="hint">Thay đổi đi qua Keycloak Admin API, local history + Outbox, sau đó invalidate authorization cache.</p></div></div></section>` })
+import { AuthService } from '../../../../../shared/auth.service';
+import { MarketplaceApiService } from '../../../../../shared/marketplace-api.service';
+import { AuthorizationSnapshot } from '../../../../../shared/marketplace-types';
+import { UiErrorView, uiError } from '../../../../../shared/ui-state';
+import { AdminPageHeaderComponent } from '../shared/admin-page-header.component';
+import { AdminStateComponent } from '../shared/admin-state.component';
+
+/** Permission administration page writing role/seller scope changes through Authorization service. */
+@Component({
+  standalone: true,
+  selector: 'admin-security',
+  imports: [CommonModule, FormsModule, AdminPageHeaderComponent, AdminStateComponent],
+  template: `
+    <section>
+      <admin-page-header
+        eyebrow="KEYCLOAK AUTHORIZATION"
+        title="Roles, permissions & seller scope"
+        description="Security mutations are explicit, confirmed and re-read from the backend after each change."
+      />
+      <div class="two-col">
+        <div class="panel">
+          <h2>User authorization</h2>
+          <label>Keycloak user ID<input [(ngModel)]="userId" placeholder="User UUID"></label>
+          <button type="button" [disabled]="busy() || !userId.trim()" (click)="load()">Load snapshot</button>
+          <admin-state
+            *ngIf="failure() as problem"
+            kind="error"
+            title="Security operation failed"
+            [message]="problem.message"
+            [traceId]="problem.traceId"
+          />
+          <pre class="json" *ngIf="snapshot() as current">{{ current | json }}</pre>
+        </div>
+
+        <div class="panel">
+          <h2>Mutations</h2>
+          <label>Role<input [(ngModel)]="role" placeholder="SELLER_MANAGER"></label>
+          <div class="actions">
+            <button type="button" [disabled]="busy() || !canMutateRole" (click)="assignRole()">Assign role</button>
+            <button type="button" class="danger" [disabled]="busy() || !canMutateRole" (click)="removeRole()">Remove role</button>
+          </div>
+
+          <label>Seller scope<input type="number" min="1" [(ngModel)]="sellerId"></label>
+          <div class="actions">
+            <button type="button" [disabled]="busy() || !canMutateSeller" (click)="assignSeller()">Assign seller</button>
+            <button type="button" class="danger" [disabled]="busy() || !canMutateSeller" (click)="removeSeller()">Remove seller</button>
+          </div>
+          <p class="hint">Changes go through the Authorization service/Keycloak integration, preserve backend audit/outbox behavior, then refresh effective browser authorization.</p>
+        </div>
+      </div>
+    </section>
+  `,
+})
 export class SecurityComponent {
-    userId = '';
-    role = 'SELLER_MANAGER';
-    sellerId = 10001;
-    readonly snapshot = signal<any>(undefined);
-    readonly error = signal('');
-    constructor(private readonly api: ApiService) { }
-    async load() { if (!this.userId)
-        return; try {
-        this.snapshot.set(await this.api.get<any>(`/private/admin/security/users/${this.userId}`, true));
+  private readonly marketplace = inject(MarketplaceApiService);
+  private readonly auth = inject(AuthService);
+  userId = '';
+  role = 'SELLER_MANAGER';
+  sellerId?: number;
+  readonly snapshot = signal<AuthorizationSnapshot | undefined>(undefined);
+  readonly failure = signal<UiErrorView | undefined>(undefined);
+  readonly busy = signal(false);
+
+  get canMutateRole(): boolean {
+    return !!this.userId.trim() && !!this.role.trim();
+  }
+
+  get canMutateSeller(): boolean {
+    return !!this.userId.trim() && !!this.sellerId;
+  }
+
+  async load(): Promise<void> {
+    if (!this.userId.trim()) return;
+    this.failure.set(undefined);
+    try {
+      this.snapshot.set(await this.marketplace.authorization(this.userId.trim()));
+    } catch (error) {
+      this.failure.set(uiError(error));
     }
-    catch (e) {
-        this.error.set(errorMessage(e));
-    } }
-    async assignRole() { await this.api.send('PUT', `/private/admin/security/users/${this.userId}/roles`, { role: this.role }); await this.load(); }
-    async removeRole() { await this.api.send('DELETE', `/private/admin/security/users/${this.userId}/roles/${encodeURIComponent(this.role)}`, undefined); await this.load(); }
-    async assignSeller() { await this.api.send('PUT', `/private/admin/security/users/${this.userId}/seller-scopes`, { sellerId: this.sellerId }); await this.load(); }
-    async removeSeller() { await this.api.send('DELETE', `/private/admin/security/users/${this.userId}/seller-scopes/${this.sellerId}`, undefined); await this.load(); }
+  }
+
+  async assignRole(): Promise<void> {
+    if (!this.canMutateRole || !confirm(`Assign role ${this.role.trim()} to ${this.userId.trim()}?`)) return;
+    await this.mutate(() => this.marketplace.assignRole(this.userId.trim(), this.role.trim()));
+  }
+
+  async removeRole(): Promise<void> {
+    if (!this.canMutateRole || !confirm(`Remove role ${this.role.trim()} from ${this.userId.trim()}?`)) return;
+    await this.mutate(() => this.marketplace.removeRole(this.userId.trim(), this.role.trim()));
+  }
+
+  async assignSeller(): Promise<void> {
+    if (!this.canMutateSeller || !confirm(`Assign seller scope ${this.sellerId} to ${this.userId.trim()}?`)) return;
+    await this.mutate(() => this.marketplace.assignSellerScope(this.userId.trim(), this.sellerId!));
+  }
+
+  async removeSeller(): Promise<void> {
+    if (!this.canMutateSeller || !confirm(`Remove seller scope ${this.sellerId} from ${this.userId.trim()}?`)) return;
+    await this.mutate(() => this.marketplace.removeSellerScope(this.userId.trim(), this.sellerId!));
+  }
+
+  private async mutate(command: () => Promise<void>): Promise<void> {
+    this.busy.set(true);
+    this.failure.set(undefined);
+    try {
+      await command();
+      await Promise.all([this.load(), this.auth.refreshAuthorization()]);
+    } catch (error) {
+      this.failure.set(uiError(error));
+    } finally {
+      this.busy.set(false);
+    }
+  }
 }
