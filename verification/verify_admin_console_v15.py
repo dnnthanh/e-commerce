@@ -80,6 +80,10 @@ for snippet in [
 ]:
     require(snippet in comment_api, f'Comment API missing Admin moderation contract: {snippet}')
 
+keycloak_bootstrap = text('infrastructure/keycloak/bootstrap-internal-client.sh')
+for snippet in ['ensure_realm_role COMMENT_MODERATE', '--rname PLATFORM_ADMIN', '--rolename COMMENT_MODERATE']:
+    require(snippet in keycloak_bootstrap, f'Keycloak runtime seed missing Admin moderator grant: {snippet}')
+
 if errors:
     print('ADMIN_CONSOLE_V15=FAIL')
     for error in errors:
