@@ -9,6 +9,19 @@ import { AdminPageHeaderComponent } from '../shared/admin-page-header.component'
 import { AdminStateComponent } from '../shared/admin-state.component';
 import { StatusBadgeComponent } from '../shared/status-badge.component';
 
+const SHIPMENT_TRANSITIONS: Record<string, string[]> = {
+  ALLOCATED: ['PICKING', 'CANCELLED'],
+  PICKING: ['PACKED', 'CANCELLED'],
+  PACKED: ['READY_TO_SHIP', 'CANCELLED'],
+  READY_TO_SHIP: ['HANDED_OVER', 'CANCELLED'],
+  HANDED_OVER: ['IN_TRANSIT'],
+  IN_TRANSIT: ['DELIVERED', 'DELIVERY_FAILED'],
+  DELIVERY_FAILED: ['IN_TRANSIT', 'RETURN_TO_SENDER'],
+  DELIVERED: [],
+  RETURN_TO_SENDER: [],
+  CANCELLED: [],
+};
+
 @Component({
   standalone: true,
   selector: 'admin-fulfillment',
@@ -103,18 +116,7 @@ export class FulfillmentComponent implements OnInit {
   }
 
   nextStatuses(status: string): string[] {
-    return {
-      ALLOCATED: ['PICKING', 'CANCELLED'],
-      PICKING: ['PACKED', 'CANCELLED'],
-      PACKED: ['READY_TO_SHIP', 'CANCELLED'],
-      READY_TO_SHIP: ['HANDED_OVER', 'CANCELLED'],
-      HANDED_OVER: ['IN_TRANSIT'],
-      IN_TRANSIT: ['DELIVERED', 'DELIVERY_FAILED'],
-      DELIVERY_FAILED: ['IN_TRANSIT', 'RETURN_TO_SENDER'],
-      DELIVERED: [],
-      RETURN_TO_SENDER: [],
-      CANCELLED: [],
-    }[status] ?? [];
+    return SHIPMENT_TRANSITIONS[status] ?? [];
   }
 
   async advance(shipment: ShipmentView): Promise<void> {
