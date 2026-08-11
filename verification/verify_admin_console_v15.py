@@ -31,7 +31,8 @@ for snippet in ["path: 'unauthorized'", "path: 'forbidden'", 'permissionGuard']:
     require(snippet in routes, f'admin routes missing auth state contract: {snippet}')
 
 dashboard = text('frontend/projects/admin/src/app/features/dashboard.component.ts')
-require('ApiService' not in dashboard, 'dashboard still calls raw ApiService')
+require("from '../../../../../shared/api.service'" not in dashboard, 'dashboard imports raw ApiService')
+require('inject(ApiService)' not in dashboard, 'dashboard injects raw ApiService')
 require('signal<any' not in dashboard, 'dashboard still uses any-backed feature state')
 require('<strong>53</strong>' not in dashboard, 'dashboard still hard-codes service count 53')
 require('MarketplaceApiService' in dashboard, 'dashboard does not use MarketplaceApiService')
