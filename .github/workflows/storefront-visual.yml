@@ -139,9 +139,9 @@ jobs:
           set -euo pipefail
           docker compose run --rm --no-deps --entrypoint sh seed-postgres-demo -c '
             set -e
-            PGPASSWORD=catalog_password psql -h postgres -U catalog -d catalog_db -f /seed/catalog.sql
-            PGPASSWORD=pricing_password psql -h postgres -U pricing_app -d pricing_db -f /seed/pricing.sql
-            PGPASSWORD=media_password psql -h postgres -U media_user -d media_db -f /seed/media.sql
+            PGPASSWORD=catalog_password psql -v ON_ERROR_STOP=1 -h postgres -U catalog -d catalog_db -f /seed/catalog.sql
+            PGPASSWORD=pricing_password psql -v ON_ERROR_STOP=1 -h postgres -U pricing_app -d pricing_db -f /seed/pricing.sql
+            PGPASSWORD=media_password psql -v ON_ERROR_STOP=1 -h postgres -U media_user -d media_db -f /seed/media.sql
           '
 
       - name: Materialize real media binaries in MinIO

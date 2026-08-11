@@ -18,6 +18,7 @@ on:
       - 'docker-compose.yml'
       - 'data/seed-demo/**'
       - 'infrastructure/keycloak/**'
+      - 'infrastructure/sqlserver/**'
       - '.github/workflows/admin-visual.yml'
 
 permissions:
@@ -57,6 +58,9 @@ jobs:
         run: |
           set -euo pipefail
           docker compose up -d postgres mysql sqlserver mongo mongo-init redis kafka keycloak
+
+      - name: Initialize SQL Server marketplace databases
+        run: docker compose run --rm sqlserver-init
 
       - name: Build backend runtime
         run: docker compose build backend-runtime-build
@@ -135,9 +139,9 @@ jobs:
           set -euo pipefail
           docker compose run --rm --no-deps --entrypoint sh seed-postgres-demo -c '
             set -e
-            PGPASSWORD=catalog_password psql -h postgres -U catalog -d catalog_db -f /seed/catalog.sql
-            PGPASSWORD=operations_password psql -h postgres -U operations_user -d operations_db -f /seed/operations.sql
-            PGPASSWORD=authorization_password psql -h postgres -U authorization_app -d authorization_db -f /seed/authorization.sql
+            PGPASSWORD=catalog_password psql -v ON_ERROR_STOP=1 -h postgres -U catalog -d catalog_db -f /seed/catalog.sql
+            PGPASSWORD=operations_password psql -v ON_ERROR_STOP=1 -h postgres -U operations_user -d operations_db -f /seed/operations.sql
+            PGPASSWORD=authorization_password psql -v ON_ERROR_STOP=1 -h postgres -U authorization_app -d authorization_db -f /seed/authorization.sql
           '
 
       - name: Seed real MySQL Review data
