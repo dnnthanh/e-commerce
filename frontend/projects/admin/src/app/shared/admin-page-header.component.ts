@@ -9,7 +9,7 @@ import { Component, Input } from '@angular/core';
       <div>
         <small>{{ eyebrow }}</small>
         <h1>{{ title }}</h1>
-        <p *ngIf="description">{{ description }}</p>
+        @if (description) { <p>{{ description }}</p> }
       </div>
       <div class="actions"><ng-content select="[actions]" /></div>
     </div>
