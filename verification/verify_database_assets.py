@@ -14,8 +14,13 @@ for changelog in changelogs:
     module = changelog.parents[5]
     pom = module / "pom.xml"
     pom_text = pom.read_text()
-    if "liquibase-core" not in pom_text:
-        failures.append(f"{module.name}: changelog exists but liquibase-core dependency is missing")
+    has_liquibase_dependency = (
+        "spring-boot-starter-liquibase" in pom_text or "liquibase-core" in pom_text
+    )
+    if not has_liquibase_dependency:
+        failures.append(
+            f"{module.name}: changelog exists but Liquibase dependency is missing"
+        )
 
     raw = changelog.read_text()
     if re.search(r"^\s+- insert:", raw, flags=re.MULTILINE):

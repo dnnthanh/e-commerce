@@ -21,8 +21,23 @@ ensure_service_account_enabled() {
   fi
 }
 
+ensure_realm_role() {
+  local role_name="$1"
+  local description="$2"
+  if ! /opt/keycloak/bin/kcadm.sh get "roles/$role_name" -r "$REALM" >/dev/null 2>&1; then
+    /opt/keycloak/bin/kcadm.sh create roles -r "$REALM" -s name="$role_name" -s description="$description" >/dev/null
+  fi
+}
+
 ensure_service_account_enabled "$SERVICE_CLIENT_ID"
 ensure_service_account_enabled "$AUTH_ADMIN_CLIENT_ID"
+
+# Feature 015 exposes the existing Comment moderation use case to browser operators. Keep the
+# permission seed idempotent for existing local volumes as well as fresh realm imports.
+ensure_realm_role COMMENT_MODERATE "Hide or restore marketplace comments during moderation"
+/opt/keycloak/bin/kcadm.sh add-roles -r "$REALM" \
+  --rname PLATFORM_ADMIN \
+  --rolename COMMENT_MODERATE >/dev/null 2>&1 || true
 
 # Internal service calls authenticate with a technical identity, never a human admin role.
 /opt/keycloak/bin/kcadm.sh add-roles -r "$REALM" \

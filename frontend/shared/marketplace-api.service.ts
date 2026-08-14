@@ -227,6 +227,14 @@ export class MarketplaceApiService {
     });
   }
 
+  hideComment(threadId: string): Promise<CommentThread> {
+    return this.api.send('POST', `/private/comments/${threadId}/hide`);
+  }
+
+  unhideComment(threadId: string): Promise<CommentThread> {
+    return this.api.send('POST', `/private/comments/${threadId}/unhide`);
+  }
+
   // Notifications
   notifications(limit = 100): Promise<NotificationView[]> {
     return this.api.get(`/private/notifications?limit=${limit}`, true);
@@ -328,6 +336,17 @@ export class MarketplaceApiService {
     return this.api.send(
       'DELETE',
       `/private/admin/security/users/${userId}/roles/${encodeURIComponent(role)}`,
+    );
+  }
+
+  assignSellerScope(userId: string, sellerId: number): Promise<void> {
+    return this.api.send('PUT', `/private/admin/security/users/${userId}/seller-scopes`, { sellerId });
+  }
+
+  removeSellerScope(userId: string, sellerId: number): Promise<void> {
+    return this.api.send(
+      'DELETE',
+      `/private/admin/security/users/${userId}/seller-scopes/${sellerId}`,
     );
   }
 
